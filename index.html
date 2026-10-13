@@ -70,6 +70,9 @@
       font-size: 0.875rem;
       color: var(--muted);
       min-height: 1.25rem;
+      text-align: center;
+      max-width: 480px;
+      word-break: break-word;
     }
     .status.ok { color: var(--accent); }
     .status.err { color: var(--danger); }
@@ -88,21 +91,21 @@
   </div>
 
   <div class="modes" id="modes">
-    <button class="mode-btn" data-mode="lock">
-      Aim Lock
-      <span>bone_Head → bone_Head (giữ nguyên / lock cứng)</span>
+    <button class="mode-btn" data-mode="head">
+      Aim Head / Lock
+      <span>ép spine / hips / root → head (aim đầu)</span>
     </button>
     <button class="mode-btn" data-mode="neck">
       Aim Neck
-      <span>bone_Head → bone_Neck</span>
+      <span>ép về spine / neck</span>
     </button>
     <button class="mode-btn" data-mode="drag">
       Aim Drag
-      <span>bone_Head → bone_Spine / drag trajectory</span>
+      <span>ép về spine (drag trajectory)</span>
     </button>
     <button class="mode-btn" data-mode="body">
       Aim Body
-      <span>bone_Head → bone_Hips</span>
+      <span>ép về hips (thân)</span>
     </button>
   </div>
 
