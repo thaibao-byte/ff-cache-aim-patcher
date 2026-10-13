@@ -10,41 +10,43 @@
   let originalBuffer = null;
   let originalName = "";
 
+  // Real strings found in FF/FFM UnityFS optionalab (same-length swaps only)
   const PATCHES = {
     lock: [
       { from: "bone_Head", to: "bone_Head" },
-      { from: "Bone_Head", to: "Bone_Head" },
-      { from: "Bip001 Head", to: "Bip001 Head" },
-      { from: "Head", to: "Head" }
+      { from: "bone_Spine", to: "bone_Spine" },
+      { from: "bone_Hips", to: "bone_Hips" },
+      { from: "bone_Root", to: "bone_Root" }
     ],
     neck: [
-      { from: "bone_Head", to: "bone_Neck" },
-      { from: "Bone_Head", to: "Bone_Neck" },
-      { from: "Bip001 Head", to: "Bip001 Neck" },
-      { from: "Head", to: "Neck" }
+      // aim higher: hips/root/spine → spine (neck-ish)
+      { from: "bone_Hips", to: "bone_Spine" },
+      { from: "bone_Root", to: "bone_Spine" },
+      { from: "bone_Head", to: "bone_Spine" },
+      { from: "Bone_Head", to: "Bone_Spine" }
     ],
     drag: [
+      // trajectory: head/hips → spine
       { from: "bone_Head", to: "bone_Spine" },
-      { from: "Bone_Head", to: "Bone_Spine" },
-      { from: "Bip001 Head", to: "Bip001 Spine" },
-      { from: "Head", to: "Spine" },
-      { from: "bone_Neck", to: "bone_Spine" }
+      { from: "bone_Hips", to: "bone_Spine" },
+      { from: "bone_Root", to: "bone_Spine" },
+      { from: "Bone_Head", to: "Bone_Spine" }
     ],
     body: [
+      // body: spine/root → hips
+      { from: "bone_Spine", to: "bone_Hips" },
+      { from: "bone_Root", to: "bone_Hips" },
       { from: "bone_Head", to: "bone_Hips" },
       { from: "Bone_Head", to: "Bone_Hips" },
-      { from: "Bip001 Head", to: "Bip001 Pelvis" },
-      { from: "Head", to: "Hips" },
-      { from: "bone_Neck", to: "bone_Hips" }
+      { from: "bone_Spine1", to: "bone_Hips" }
     ]
   };
 
   const SCAN_STRINGS = [
-    "bone_Head", "bone_Neck", "bone_Spine", "bone_Hips",
-    "Bone_Head", "Bone_Neck", "Bone_Spine", "Bone_Hips",
+    "bone_Head", "bone_Neck", "bone_Spine", "bone_Spine1", "bone_Hips", "bone_Root",
+    "Bone_Head", "Bone_Neck", "Bone_Spine", "Bone_Hips", "Bone_Root",
     "Bip001 Head", "Bip001 Neck", "Bip001 Spine", "Bip001 Pelvis",
-    "Head", "Neck", "Spine", "Hips", "Pelvis",
-    "Root", "Hip", "Chest", "UpperChest"
+    "Head", "Neck", "Spine", "Hips", "Pelvis", "Root", "Hip", "Chest"
   ];
 
   function setStatus(msg, type) {
@@ -125,8 +127,11 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const base = name.replace(/\.zip$/i, "");
-    a.download = base.replace(/(\.[\w]+)?$/, `_${mode}$1`) || `cache_${mode}.bin`;
+    // keep original-looking name, strip fake .zip if UnityFS
+    let out = name.replace(/\.zip$/i, "");
+    if (!/_[a-z]+$/i.test(out)) out = out + "_" + mode;
+    else out = out.replace(/_[a-z]+$/i, "_" + mode);
+    a.download = out;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -169,6 +174,13 @@
     return candidates;
   }
 
+  function isUnityFS(u8) {
+    // "UnityFS"
+    return u8.length >= 7 &&
+      u8[0] === 0x55 && u8[1] === 0x6e && u8[2] === 0x69 &&
+      u8[3] === 0x74 && u8[4] === 0x79 && u8[5] === 0x46 && u8[6] === 0x53;
+  }
+
   async function handleFile(file) {
     try {
       setStatus("Đang đọc file…");
@@ -176,20 +188,20 @@
       originalName = file.name;
 
       const u8 = new Uint8Array(buffer);
-      const isZip = file.name.toLowerCase().endsWith(".zip") ||
-        (u8[0] === 0x50 && u8[1] === 0x4b);
+      const looksZip = u8[0] === 0x50 && u8[1] === 0x4b;
+      const unity = isUnityFS(u8);
 
-      if (isZip) {
+      // real zip only (not UnityFS renamed .zip)
+      if (looksZip && !unity) {
         setStatus("Đang giải nén zip…");
         const files = await extractFromZip(buffer);
         if (!files.length) {
-          setStatus("Zip rỗng / không giải nén được. Thử nén stored (không compress).", "err");
+          setStatus("Zip rỗng / không giải nén được.", "err");
           originalBuffer = null;
           modesEl.classList.remove("show");
           return;
         }
 
-        // scan every entry, pick highest bone score
         let best = null;
         let bestScore = -1;
         for (const f of files) {
@@ -202,24 +214,14 @@
         }
 
         if (!best || bestScore <= 0) {
-          // fallback largest
           files.sort((a, b) => b.buffer.byteLength - a.buffer.byteLength);
           best = { file: files[0], found: scanBones(files[0].buffer) };
-          setStatus(
-            "Zip có " + files.length + " file. Không thấy bone rõ. Thử file lớn nhất: " +
-            (best.file.name || "?") +
-            " (" + (best.file.buffer.byteLength / 1024).toFixed(1) + " KB)",
-            "err"
-          );
+          setStatus("Zip: không thấy bone rõ, thử file lớn nhất: " + (best.file.name || "?"), "err");
         } else {
           const preview = best.found.slice(0, 6).map(function (x) {
             return x.name + "×" + x.count;
           }).join(", ");
-          setStatus(
-            "Zip → chọn: " + (best.file.name || "?") +
-            " | " + preview,
-            "ok"
-          );
+          setStatus("Zip → " + (best.file.name || "?") + " | " + preview, "ok");
         }
 
         buffer = best.file.buffer;
@@ -227,20 +229,19 @@
       }
 
       originalBuffer = buffer;
-      fileNameEl.textContent = originalName + " (" + (buffer.byteLength / 1024).toFixed(1) + " KB)";
+      fileNameEl.textContent = originalName + " (" + (buffer.byteLength / 1024).toFixed(1) + " KB)" +
+        (unity ? " · UnityFS" : "");
 
-      if (!isZip) {
-        const found = scanBones(buffer);
-        if (found.length) {
-          setStatus(
-            "Tìm thấy: " + found.slice(0, 8).map(function (x) {
-              return x.name + "×" + x.count;
-            }).join(", "),
-            "ok"
-          );
-        } else {
-          setStatus("Cảnh báo: không thấy bone string. File có thể encrypt / sai loại.", "err");
-        }
+      const found = scanBones(buffer);
+      if (found.length) {
+        setStatus(
+          "Tìm thấy: " + found.slice(0, 10).map(function (x) {
+            return x.name + "×" + x.count;
+          }).join(", "),
+          "ok"
+        );
+      } else {
+        setStatus("Cảnh báo: không thấy bone string. File có thể encrypt / sai loại.", "err");
       }
 
       modesEl.classList.add("show");
@@ -279,13 +280,13 @@
         if (found.length) {
           setStatus(
             "Không match mode này. File có: " +
-            found.slice(0, 6).map(function (x) {
+            found.slice(0, 8).map(function (x) {
               return x.name + "×" + x.count;
             }).join(", "),
             "err"
           );
         } else {
-          setStatus("Không tìm thấy bone string. Sai file / encrypt.", "err");
+          setStatus("Không tìm thấy bone string.", "err");
         }
         return;
       }
