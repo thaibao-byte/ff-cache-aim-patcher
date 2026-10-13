@@ -10,37 +10,73 @@
   let originalBuffer = null;
   let originalName = "";
 
-  // Real strings found in FF/FFM UnityFS optionalab (same-length swaps only)
+  // same-length only. Head often missing in optionalab — use closest available.
+  // bone_Spine (10) can't become bone_Head (9) safely; use Bone_Head / pad patterns carefully.
   const PATCHES = {
-    lock: [
+    head: [
+      // prefer exact head if present (no-op lock)
       { from: "bone_Head", to: "bone_Head" },
-      { from: "bone_Spine", to: "bone_Spine" },
-      { from: "bone_Hips", to: "bone_Hips" },
-      { from: "bone_Root", to: "bone_Root" }
+      { from: "Bone_Head", to: "Bone_Head" },
+      // common community remap: hips/root → head-length aliases where possible
+      // bone_Hips (9) → bone_Head (9)
+      { from: "bone_Hips", to: "bone_Head" },
+      // bone_Root (9) → bone_Head (9)
+      { from: "bone_Root", to: "bone_Head" },
+      // bone_Spine is 10 chars — map to bone_Spine stays; secondary to Bone_Head no
+      // bone_Spine1 (11) leave; try Neck-length swaps for "higher" aim when head absent
+      { from: "bone_Spine", to: "bone_Neck" } // 10→10 if Neck used as high aim
     ],
     neck: [
-      // aim higher: hips/root/spine → spine (neck-ish)
-      { from: "bone_Hips", to: "bone_Spine" },
-      { from: "bone_Root", to: "bone_Spine" },
-      { from: "bone_Head", to: "bone_Spine" },
-      { from: "Bone_Head", to: "Bone_Spine" }
+      { from: "bone_Hips", to: "bone_Spine" }, // 9≠10 skip
+      { from: "bone_Root", to: "bone_Spine" }, // 9≠10 skip
+      { from: "bone_Head", to: "bone_Neck" }, // 9≠10 skip unless both present same len
+      { from: "Bone_Head", to: "Bone_Neck" },
+      { from: "bone_Hips", to: "bone_Root" },
+      { from: "bone_Spine", to: "bone_Spine" }
     ],
     drag: [
-      // trajectory: head/hips → spine
       { from: "bone_Head", to: "bone_Spine" },
       { from: "bone_Hips", to: "bone_Spine" },
       { from: "bone_Root", to: "bone_Spine" },
-      { from: "Bone_Head", to: "Bone_Spine" }
+      { from: "Bone_Head", to: "Bone_Spine" },
+      { from: "bone_Hips", to: "bone_Root" }
     ],
     body: [
-      // body: spine/root → hips
-      { from: "bone_Spine", to: "bone_Hips" },
-      { from: "bone_Root", to: "bone_Hips" },
-      { from: "bone_Head", to: "bone_Hips" },
+      { from: "bone_Spine", to: "bone_Hips" }, // lengths differ — will skip
+      { from: "bone_Root", to: "bone_Hips" }, // 9=9
+      { from: "bone_Head", to: "bone_Hips" }, // 9=9
       { from: "Bone_Head", to: "Bone_Hips" },
-      { from: "bone_Spine1", to: "bone_Hips" }
+      { from: "bone_Spine1", to: "bone_Hips" } // 11≠9 skip
     ]
   };
+
+  // rebuild with only same-length pairs that actually exist in FF optionalab
+  PATCHES.head = [
+    { from: "bone_Hips", to: "bone_Head" },
+    { from: "bone_Root", to: "bone_Head" },
+    { from: "bone_Head", to: "bone_Head" },
+    { from: "Bone_Head", to: "Bone_Head" }
+  ];
+  PATCHES.neck = [
+    { from: "bone_Head", to: "bone_Neck" },
+    { from: "Bone_Head", to: "Bone_Neck" },
+    { from: "bone_Hips", to: "bone_Root" },
+    { from: "bone_Root", to: "bone_Root" },
+    { from: "bone_Spine", to: "bone_Spine" }
+  ];
+  PATCHES.drag = [
+    { from: "bone_Head", to: "bone_Spine" },
+    { from: "Bone_Head", to: "Bone_Spine" },
+    { from: "bone_Hips", to: "bone_Root" },
+    { from: "bone_Root", to: "bone_Root" },
+    { from: "bone_Spine", to: "bone_Spine" }
+  ];
+  PATCHES.body = [
+    { from: "bone_Head", to: "bone_Hips" },
+    { from: "bone_Root", to: "bone_Hips" },
+    { from: "Bone_Head", to: "Bone_Hips" },
+    { from: "bone_Hips", to: "bone_Hips" }
+  ];
 
   const SCAN_STRINGS = [
     "bone_Head", "bone_Neck", "bone_Spine", "bone_Spine1", "bone_Hips", "bone_Root",
@@ -127,10 +163,9 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    // keep original-looking name, strip fake .zip if UnityFS
     let out = name.replace(/\.zip$/i, "");
-    if (!/_[a-z]+$/i.test(out)) out = out + "_" + mode;
-    else out = out.replace(/_[a-z]+$/i, "_" + mode);
+    if (!/_(head|neck|drag|body|lock)$/i.test(out)) out = out + "_" + mode;
+    else out = out.replace(/_(head|neck|drag|body|lock)$/i, "_" + mode);
     a.download = out;
     document.body.appendChild(a);
     a.click();
@@ -175,7 +210,6 @@
   }
 
   function isUnityFS(u8) {
-    // "UnityFS"
     return u8.length >= 7 &&
       u8[0] === 0x55 && u8[1] === 0x6e && u8[2] === 0x69 &&
       u8[3] === 0x74 && u8[4] === 0x79 && u8[5] === 0x46 && u8[6] === 0x53;
@@ -191,7 +225,6 @@
       const looksZip = u8[0] === 0x50 && u8[1] === 0x4b;
       const unity = isUnityFS(u8);
 
-      // real zip only (not UnityFS renamed .zip)
       if (looksZip && !unity) {
         setStatus("Đang giải nén zip…");
         const files = await extractFromZip(buffer);
@@ -279,10 +312,11 @@
         const found = scanBones(originalBuffer);
         if (found.length) {
           setStatus(
-            "Không match mode này. File có: " +
+            "Không match. File có: " +
             found.slice(0, 8).map(function (x) {
               return x.name + "×" + x.count;
-            }).join(", "),
+            }).join(", ") +
+            (mode === "head" ? " — thiếu bone_Head trong file này" : ""),
             "err"
           );
         } else {
