@@ -10,7 +10,6 @@
   let originalBuffer = null;
   let originalName = "";
 
-  // Primary + common variants (UTF-8)
   const PATCHES = {
     lock: [
       { from: "bone_Head", to: "bone_Head" },
@@ -40,7 +39,6 @@
     ]
   };
 
-  // Extra search targets for diagnostics
   const SCAN_STRINGS = [
     "bone_Head", "bone_Neck", "bone_Spine", "bone_Hips",
     "Bone_Head", "Bone_Neck", "Bone_Spine", "Bone_Hips",
@@ -86,9 +84,18 @@
     for (const s of SCAN_STRINGS) {
       const bytes = encode(s);
       const count = findAll(view, bytes).length;
-      if (count > 0) found.push(s + "×" + count);
+      if (count > 0) found.push({ name: s, count: count });
     }
     return found;
+  }
+
+  function boneScore(found) {
+    let score = 0;
+    for (const f of found) {
+      if (/bone_|Bip001/i.test(f.name)) score += f.count * 10;
+      else score += f.count;
+    }
+    return score;
   }
 
   function applyPatch(buffer, mode) {
@@ -101,8 +108,6 @@
     for (const patch of list) {
       const fromBytes = encode(patch.from);
       const toBytes = encode(patch.to);
-
-      // same-length only to keep binary layout safe
       if (fromBytes.length !== toBytes.length) continue;
 
       const positions = findAll(view, fromBytes);
@@ -128,10 +133,8 @@
     URL.revokeObjectURL(url);
   }
 
-  // Minimal ZIP local-file extractor (stored / deflate via DecompressionStream if available)
   async function extractFromZip(arrayBuffer) {
     const view = new Uint8Array(arrayBuffer);
-    // look for local file headers PK\x03\x04
     const candidates = [];
     for (let i = 0; i < view.length - 30; i++) {
       if (view[i] === 0x50 && view[i+1] === 0x4b && view[i+2] === 0x03 && view[i+3] === 0x04) {
@@ -143,20 +146,22 @@
         const nameBytes = view.slice(nameStart, nameStart + nameLen);
         const name = new TextDecoder().decode(nameBytes);
         const dataStart = nameStart + nameLen + extraLen;
+        if (dataStart + compSize > view.length) continue;
         const data = view.slice(dataStart, dataStart + compSize);
 
-        // skip directories
         if (name.endsWith("/")) continue;
 
         if (compMethod === 0) {
-          // stored
-          candidates.push({ name, buffer: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) });
+          candidates.push({
+            name: name,
+            buffer: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+          });
         } else if (compMethod === 8 && typeof DecompressionStream !== "undefined") {
           try {
             const ds = new DecompressionStream("deflate-raw");
             const stream = new Blob([data]).stream().pipeThrough(ds);
             const ab = await new Response(stream).arrayBuffer();
-            candidates.push({ name, buffer: ab });
+            candidates.push({ name: name, buffer: ab });
           } catch (_) {}
         }
       }
@@ -170,35 +175,72 @@
       let buffer = await readFile(file);
       originalName = file.name;
 
-      // if zip → extract inner binary
+      const u8 = new Uint8Array(buffer);
       const isZip = file.name.toLowerCase().endsWith(".zip") ||
-        (new Uint8Array(buffer)[0] === 0x50 && new Uint8Array(buffer)[1] === 0x4b);
+        (u8[0] === 0x50 && u8[1] === 0x4b);
 
       if (isZip) {
         setStatus("Đang giải nén zip…");
         const files = await extractFromZip(buffer);
         if (!files.length) {
-          setStatus("Zip rỗng hoặc không giải nén được (cần file stored/deflate).", "err");
+          setStatus("Zip rỗng / không giải nén được. Thử nén stored (không compress).", "err");
           originalBuffer = null;
           modesEl.classList.remove("show");
           return;
         }
-        // prefer largest file or name containing cache/bone/res
-        files.sort((a, b) => b.buffer.byteLength - a.buffer.byteLength);
-        let chosen = files.find(f => /cache|bone|res|asset|bundle/i.test(f.name)) || files[0];
-        buffer = chosen.buffer;
-        originalName = chosen.name || file.name;
-        setStatus("Lấy từ zip: " + (chosen.name || "?") + " (" + (buffer.byteLength/1024).toFixed(1) + " KB)", "ok");
+
+        // scan every entry, pick highest bone score
+        let best = null;
+        let bestScore = -1;
+        for (const f of files) {
+          const found = scanBones(f.buffer);
+          const score = boneScore(found);
+          if (score > bestScore) {
+            bestScore = score;
+            best = { file: f, found: found };
+          }
+        }
+
+        if (!best || bestScore <= 0) {
+          // fallback largest
+          files.sort((a, b) => b.buffer.byteLength - a.buffer.byteLength);
+          best = { file: files[0], found: scanBones(files[0].buffer) };
+          setStatus(
+            "Zip có " + files.length + " file. Không thấy bone rõ. Thử file lớn nhất: " +
+            (best.file.name || "?") +
+            " (" + (best.file.buffer.byteLength / 1024).toFixed(1) + " KB)",
+            "err"
+          );
+        } else {
+          const preview = best.found.slice(0, 6).map(function (x) {
+            return x.name + "×" + x.count;
+          }).join(", ");
+          setStatus(
+            "Zip → chọn: " + (best.file.name || "?") +
+            " | " + preview,
+            "ok"
+          );
+        }
+
+        buffer = best.file.buffer;
+        originalName = best.file.name || file.name;
       }
 
       originalBuffer = buffer;
       fileNameEl.textContent = originalName + " (" + (buffer.byteLength / 1024).toFixed(1) + " KB)";
 
-      const found = scanBones(buffer);
-      if (found.length) {
-        setStatus("Tìm thấy: " + found.slice(0, 8).join(", ") + (found.length > 8 ? "…" : ""), "ok");
-      } else {
-        setStatus("Cảnh báo: không thấy bone string phổ biến. File có thể encrypt / sai loại.", "err");
+      if (!isZip) {
+        const found = scanBones(buffer);
+        if (found.length) {
+          setStatus(
+            "Tìm thấy: " + found.slice(0, 8).map(function (x) {
+              return x.name + "×" + x.count;
+            }).join(", "),
+            "ok"
+          );
+        } else {
+          setStatus("Cảnh báo: không thấy bone string. File có thể encrypt / sai loại.", "err");
+        }
       }
 
       modesEl.classList.add("show");
@@ -231,18 +273,24 @@
     const mode = btn.dataset.mode;
     try {
       setStatus("Đang patch…");
-      const { buffer, count } = applyPatch(originalBuffer, mode);
-      if (count === 0) {
+      const result = applyPatch(originalBuffer, mode);
+      if (result.count === 0) {
         const found = scanBones(originalBuffer);
         if (found.length) {
-          setStatus("Không match mode này. File có: " + found.slice(0, 6).join(", "), "err");
+          setStatus(
+            "Không match mode này. File có: " +
+            found.slice(0, 6).map(function (x) {
+              return x.name + "×" + x.count;
+            }).join(", "),
+            "err"
+          );
         } else {
-          setStatus("Không tìm thấy bone string. File zip/encrypt/sai loại.", "err");
+          setStatus("Không tìm thấy bone string. Sai file / encrypt.", "err");
         }
         return;
       }
-      download(buffer, originalName, mode);
-      setStatus(`Đã patch ${count} vị trí → tải về xong`, "ok");
+      download(result.buffer, originalName, mode);
+      setStatus("Đã patch " + result.count + " vị trí → tải về xong", "ok");
     } catch (err) {
       setStatus(err.message || "Lỗi patch", "err");
     }
