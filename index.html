@@ -14,6 +14,7 @@
       --accent: #238636;
       --accent-h: #2ea043;
       --danger: #da3633;
+      --warn: #d29922;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -30,7 +31,7 @@
     .sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 2rem; }
     .drop {
       width: 100%;
-      max-width: 480px;
+      max-width: 520px;
       border: 2px dashed var(--border);
       border-radius: 12px;
       padding: 2.5rem 1.5rem;
@@ -42,11 +43,64 @@
     .drop.dragover { border-color: var(--accent); background: #0d2818; }
     .drop p { color: var(--muted); margin-top: 0.5rem; font-size: 0.875rem; }
     #fileName { margin-top: 1rem; font-size: 0.8rem; color: var(--accent); word-break: break-all; }
+
+    .panel {
+      width: 100%;
+      max-width: 520px;
+      margin-top: 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      display: none;
+    }
+    .panel.show { display: block; }
+
+    .bone-title, .verify-title, .picker-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .bone-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      padding: 0.2rem 0;
+      border-bottom: 1px solid #21262d;
+    }
+    .bone-row:last-child { border-bottom: none; }
+    .bone-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .bone-count { color: var(--accent); font-weight: 600; }
+    .warn { color: var(--warn); font-size: 0.85rem; }
+
+    #filePicker select {
+      width: 100%;
+      background: #0d1117;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.55rem 0.65rem;
+      font-size: 0.85rem;
+    }
+
+    .verify-line { font-size: 0.9rem; margin-bottom: 0.4rem; }
+    .verify-detail {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      margin: 0.4rem 0;
+      line-height: 1.45;
+    }
+    .verify-ok { color: var(--accent); font-size: 0.85rem; margin-top: 0.35rem; }
+    .verify-warn { color: var(--warn); font-size: 0.85rem; margin-top: 0.35rem; }
+
     .modes {
       display: none;
       width: 100%;
-      max-width: 480px;
-      margin-top: 1.5rem;
+      max-width: 520px;
+      margin-top: 1.25rem;
       gap: 0.75rem;
       flex-direction: column;
     }
@@ -65,13 +119,14 @@
     }
     .mode-btn:hover { border-color: var(--accent); background: #0d2818; }
     .mode-btn span { display: block; font-size: 0.75rem; font-weight: 400; color: var(--muted); margin-top: 0.25rem; }
+
     .status {
-      margin-top: 1.5rem;
+      margin-top: 1.25rem;
       font-size: 0.875rem;
       color: var(--muted);
       min-height: 1.25rem;
       text-align: center;
-      max-width: 480px;
+      max-width: 520px;
       word-break: break-word;
     }
     .status.ok { color: var(--accent); }
@@ -81,7 +136,7 @@
 </head>
 <body>
   <h1>FF Cache Aim Patcher</h1>
-  <p class="sub">Drop file cache → chọn mode → tải file đã patch</p>
+  <p class="sub">Drop cache → scan bone → chọn file (nếu ZIP) → chọn mode → verify + tải</p>
 
   <div class="drop" id="dropZone">
     <strong>Kéo thả file cache vào đây</strong>
@@ -90,27 +145,31 @@
     <div id="fileName"></div>
   </div>
 
+  <div class="panel" id="filePicker"></div>
+  <div class="panel" id="boneReport"></div>
+
   <div class="modes" id="modes">
     <button class="mode-btn" data-mode="head">
       Aim Head / Lock
-      <span>ép spine / hips / root → head (aim đầu)</span>
+      <span>hips / root / neck → head (aim đầu)</span>
     </button>
     <button class="mode-btn" data-mode="neck">
       Aim Neck
-      <span>ép về spine / neck</span>
+      <span>head / hips / root → neck</span>
     </button>
     <button class="mode-btn" data-mode="drag">
       Aim Drag
-      <span>ép về spine (drag trajectory)</span>
+      <span>head / hips / neck → root (drag)</span>
     </button>
     <button class="mode-btn" data-mode="body">
       Aim Body
-      <span>ép về hips (thân)</span>
+      <span>head / root / neck → hips (thân)</span>
     </button>
   </div>
 
+  <div class="panel" id="verify"></div>
   <div class="status" id="status"></div>
-  <footer>Client-side only · file không upload lên server</footer>
+  <footer>Client-side only · file không upload lên server · v1.1 scan + verify</footer>
 
   <script src="patcher.js"></script>
 </body>
