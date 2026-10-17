@@ -25,7 +25,8 @@
     validEntries: [],
     lastScan: [],
     selectedNames: new Set(),
-    dryRun: false
+    dryRun: false,
+    lastMode: "head"
   };
 
   const HISTORY_KEY = "ff_patcher_history_v1";
@@ -100,9 +101,7 @@
     });
   }
 
-  function encode(str) {
-    return new TextEncoder().encode(str);
-  }
+  function encode(str) { return new TextEncoder().encode(str); }
 
   function findAll(haystack, needle) {
     const positions = [];
@@ -121,8 +120,7 @@
     const view = new Uint8Array(buffer);
     const found = [];
     for (const s of SCAN_STRINGS) {
-      const bytes = encode(s);
-      const count = findAll(view, bytes).length;
+      const count = findAll(view, encode(s)).length;
       if (count > 0) found.push({ name: s, count: count });
     }
     return found.sort((a, b) => b.count - a.count);
@@ -130,10 +128,7 @@
 
   function boneScore(found) {
     let score = 0;
-    for (const f of found) {
-      if (/bone_|Bip001/i.test(f.name)) score += f.count * 10;
-      else score += f.count;
-    }
+    for (const f of found) score += /bone_|Bip001/i.test(f.name) ? f.count * 10 : f.count;
     return score;
   }
 
@@ -144,8 +139,7 @@
   }
 
   function isUnityFS(u8) {
-    return u8.length >= 7 &&
-      u8[0] === 0x55 && u8[1] === 0x6e && u8[2] === 0x69 &&
+    return u8.length >= 7 && u8[0] === 0x55 && u8[1] === 0x6e && u8[2] === 0x69 &&
       u8[3] === 0x74 && u8[4] === 0x79 && u8[5] === 0x46 && u8[6] === 0x53;
   }
 
@@ -181,21 +175,18 @@
         const name = new TextDecoder().decode(view.slice(nameStart, nameStart + nameLen));
         const dataStart = nameStart + nameLen + extraLen;
         let rawData = null;
-        if (compMethod === 0) {
-          rawData = view.slice(dataStart, dataStart + uncompSize);
-        } else if (compMethod === 8 && typeof DecompressionStream !== "undefined") {
+        if (compMethod === 0) rawData = view.slice(dataStart, dataStart + uncompSize);
+        else if (compMethod === 8 && typeof DecompressionStream !== "undefined") {
           try {
             const compressed = view.slice(dataStart, dataStart + compSize);
             const ds = new DecompressionStream("deflate-raw");
             const stream = new Blob([compressed]).stream().pipeThrough(ds);
-            const ab = await new Response(stream).arrayBuffer();
-            rawData = new Uint8Array(ab);
+            rawData = new Uint8Array(await new Response(stream).arrayBuffer());
           } catch (_) { rawData = null; }
         }
         entries.push({
           name, headerOffset: i, dataStart, compMethod, compSize, uncompSize,
-          rawData: rawData ? rawData.buffer : null,
-          isDir: name.endsWith("/")
+          rawData: rawData ? rawData.buffer : null, isDir: name.endsWith("/")
         });
         i = compSize > 0 ? dataStart + compSize : i + 1;
       } else i++;
@@ -256,9 +247,7 @@
     const cf = (customFromEl && customFromEl.value || "").trim();
     const ct = (customToEl && customToEl.value || "").trim();
     if (cf && ct) {
-      if (cf.length !== ct.length) {
-        throw new Error("Custom pair: from và to phải cùng độ dài (" + cf.length + " vs " + ct.length + ")");
-      }
+      if (cf.length !== ct.length) throw new Error("Custom pair: from/to cùng độ dài (" + cf.length + " vs " + ct.length + ")");
       list.push({ from: cf, to: ct });
     }
     return list;
@@ -274,10 +263,7 @@
       const toBytes = encode(patch.to);
       if (fromBytes.length !== toBytes.length) continue;
       const positions = findAll(view, fromBytes);
-      for (const pos of positions) {
-        view.set(toBytes, pos);
-        totalReplaced++;
-      }
+      for (const pos of positions) { view.set(toBytes, pos); totalReplaced++; }
       if (positions.length) detail[patch.from + " → " + patch.to] = positions.length;
     }
     return { buffer: view.buffer, count: totalReplaced, detail };
@@ -286,8 +272,7 @@
   function verifyPatch(buffer, mode) {
     const view = new Uint8Array(buffer);
     const list = getPatchList(mode);
-    const remaining = {};
-    const present = {};
+    const remaining = {}, present = {};
     for (const patch of list) {
       const fromCount = findAll(view, encode(patch.from)).length;
       const toCount = findAll(view, encode(patch.to)).length;
@@ -301,25 +286,20 @@
     const dotIndex = originalName.lastIndexOf(".");
     if (dotIndex === -1) return originalName + "_" + mode;
     const baseName = originalName.substring(0, dotIndex).replace(/_(head|neck|drag|body|lock|dry)$/i, "");
-    const ext = originalName.substring(dotIndex);
-    return baseName + "_" + mode + (state.dryRun ? "_dry" : "") + ext;
+    return baseName + "_" + mode + (state.dryRun ? "_dry" : "") + originalName.substring(dotIndex);
   }
 
   function triggerDownload(blobOrBuffer, fileName) {
     const blob = blobOrBuffer instanceof Blob ? blobOrBuffer : new Blob([blobOrBuffer], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
   function loadHistory() {
-    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }
-    catch (_) { return []; }
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch (_) { return []; }
   }
 
   function saveHistoryEntry(entry) {
@@ -334,18 +314,17 @@
     if (!historyEl) return;
     const list = loadHistory();
     if (!list.length) { historyEl.innerHTML = ""; historyEl.classList.remove("show"); return; }
-    historyEl.innerHTML = '<div class="bone-title">Lịch sử (metadata)</div>' +
+    historyEl.innerHTML = '<div class="bone-title">Lịch sử</div>' +
       list.map(h => '<div class="hist-row"><span>' + h.name + '</span><span class="muted">' +
-        (h.mode || "") + " · " + (h.hits || 0) + " hits · " + (h.at || "") + "</span></div>").join("");
+        (h.mode || "") + " · " + (h.hits || 0) + " hits</span></div>").join("");
     historyEl.classList.add("show");
   }
 
   function renderBoneReport(found) {
     if (!boneReportEl) return;
     if (!found.length) {
-      boneReportEl.innerHTML = '<div class="warn">Không tìm thấy bone tiêu chuẩn. File có thể mã hóa / UnityFS / version mới.</div>';
-      boneReportEl.classList.add("show");
-      return;
+      boneReportEl.innerHTML = '<div class="warn">Không tìm thấy bone tiêu chuẩn.</div>';
+      boneReportEl.classList.add("show"); return;
     }
     boneReportEl.innerHTML = '<div class="bone-title">Bone scan</div>' +
       found.map(f => '<div class="bone-row"><span class="bone-name">' + f.name +
@@ -354,36 +333,31 @@
   }
 
   function renderFilePicker(entries, selectedName) {
-    if (!filePickerEl) return;
-    if (!entries || !entries.length) {
-      filePickerEl.innerHTML = ""; filePickerEl.classList.remove("show"); return;
+    if (!filePickerEl || !entries || !entries.length) {
+      if (filePickerEl) { filePickerEl.innerHTML = ""; filePickerEl.classList.remove("show"); }
+      return;
     }
     state.selectedNames = new Set([selectedName]);
-    const rows = entries.map(e => {
-      const sizeKb = e.rawData ? (e.rawData.byteLength / 1024).toFixed(1) : "?";
-      const found = scanBones(e.rawData);
-      const score = boneScore(found);
-      const checked = e.name === selectedName ? "checked" : "";
-      return '<label class="file-check"><input type="checkbox" data-name="' +
-        e.name.replace(/"/g, "&quot;") + '" ' + checked + ' /><span class="fc-name">' +
-        e.name + '</span><span class="fc-meta">' + sizeKb + " KB · score " + score + "</span></label>";
-    }).join("");
-    filePickerEl.innerHTML = '<div class="picker-label">Chọn 1 hoặc nhiều file trong ZIP để patch</div>' + rows;
+    filePickerEl.innerHTML = '<div class="picker-label">Chọn file trong ZIP</div>' +
+      entries.map(e => {
+        const sizeKb = e.rawData ? (e.rawData.byteLength / 1024).toFixed(1) : "?";
+        const score = boneScore(scanBones(e.rawData));
+        const checked = e.name === selectedName ? "checked" : "";
+        return '<label class="file-check"><input type="checkbox" data-name="' +
+          e.name.replace(/"/g, "&quot;") + '" ' + checked + '/><span class="fc-name">' +
+          e.name + '</span><span class="fc-meta">' + sizeKb + " KB · " + score + "</span></label>";
+      }).join("");
     filePickerEl.classList.add("show");
     filePickerEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener("change", () => {
         const name = cb.getAttribute("data-name");
-        if (cb.checked) state.selectedNames.add(name);
-        else state.selectedNames.delete(name);
+        if (cb.checked) state.selectedNames.add(name); else state.selectedNames.delete(name);
         if (state.selectedNames.size === 1) {
-          const only = [...state.selectedNames][0];
-          const entry = state.validEntries.find(e => e.name === only);
+          const entry = state.validEntries.find(e => e.name === [...state.selectedNames][0]);
           if (entry && entry.rawData) {
             state.targetFileName = entry.name;
             state.targetFileBuffer = entry.rawData;
-            const found = scanBones(entry.rawData);
-            state.lastScan = found;
-            renderBoneReport(found);
+            renderBoneReport(scanBones(entry.rawData));
           }
         }
       });
@@ -393,26 +367,18 @@
   function renderVerify(result, mode, isDry) {
     if (!verifyEl) return;
     const v = verifyPatch(result.buffer, mode);
-    const remainingKeys = Object.keys(v.remaining);
-    const presentKeys = Object.keys(v.present);
-    let html = '<div class="verify-title">Verify ' + (isDry ? "(dry-run)" : "sau patch") + "</div>";
-    html += '<div class="verify-line">Đã khớp/thay: <strong>' + result.count + "</strong> vị trí</div>";
+    let html = '<div class="verify-title">Verify ' + (isDry ? "(dry-run)" : "") + "</div>";
+    html += '<div class="verify-line">Hits: <strong>' + result.count + "</strong></div>";
     if (Object.keys(result.detail).length) {
       html += '<div class="verify-detail">';
       for (const [k, c] of Object.entries(result.detail)) html += "<div>" + k + " ×" + c + "</div>";
       html += "</div>";
     }
-    if (remainingKeys.length) {
-      html += '<div class="verify-warn">Còn chuỗi cũ: ' +
-        remainingKeys.map(k => k + "×" + v.remaining[k]).join(", ") + "</div>";
-    } else {
-      html += '<div class="verify-ok">Không còn chuỗi nguồn cũ trong buffer đã xử lý</div>';
-    }
-    if (presentKeys.length) {
-      html += '<div class="verify-ok">Chuỗi đích: ' +
-        presentKeys.map(k => k + "×" + v.present[k]).join(", ") + "</div>";
-    }
-    if (isDry) html += '<div class="verify-warn">Dry-run: chưa tải file. Tắt dry-run rồi bấm mode để xuất.</div>';
+    const rk = Object.keys(v.remaining);
+    html += rk.length
+      ? '<div class="verify-warn">Còn chuỗi cũ: ' + rk.map(k => k + "×" + v.remaining[k]).join(", ") + "</div>"
+      : '<div class="verify-ok">Không còn chuỗi nguồn cũ</div>';
+    if (isDry) html += '<div class="verify-warn">Dry-run — chưa tải file</div>';
     verifyEl.innerHTML = html;
     verifyEl.classList.add("show");
   }
@@ -420,14 +386,63 @@
   function checklistReady() {
     if (!checklistEl) return true;
     const boxes = checklistEl.querySelectorAll('input[type="checkbox"]');
-    if (!boxes.length) return true;
     for (const b of boxes) if (!b.checked) return false;
     return true;
   }
 
+  function buildProxyPinConfig(mode) {
+    const modeLabel = mode || "head";
+    return {
+      name: "FF-Cache-Patcher-" + modeLabel,
+      version: "1.2.1",
+      enabled: true,
+      description: "Template from FF Cache Aim Patcher. Mode: " + modeLabel,
+      mode: modeLabel,
+      proxyPin: {
+        https: true,
+        filterDomains: [],
+        scripts: [{
+          name: "ff-template-" + modeLabel,
+          enabled: true,
+          url: "*",
+          type: "response",
+          script: [
+            "// ProxyPin template — mode: " + modeLabel,
+            "// Edit URL match / body for your config source.",
+            "function onResponse(context, url, response) {",
+            "  return response;",
+            "}"
+          ].join("\n")
+        }],
+        rewrites: [],
+        importGuide: [
+          "1. Open ProxyPin",
+          "2. Scripts / Import → this JSON",
+          "3. Enable HTTPS + trust cert if asked",
+          "4. Start proxy",
+          "5. Open Free Fire"
+        ]
+      },
+      warning: "Template only. Real aim depends on a working ProxyPin script for your FF build."
+    };
+  }
+
+  function exportProxyPin() {
+    let mode = state.lastMode || "head";
+    try {
+      const hist = loadHistory();
+      if (hist[0] && hist[0].mode) mode = hist[0].mode;
+    } catch (_) {}
+    const cfg = buildProxyPinConfig(mode);
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+    const name = "proxypin_ff_" + mode + "_" + Date.now() + ".json";
+    triggerDownload(blob, name);
+    setStatus("Đã xuất ProxyPin: " + name + " · Import trong app ProxyPin", "ok");
+  }
+
   async function handleFile(file) {
     try {
-      setStatus("Đang phân tích tệp…");
+      setStatus("Đang phân tích…");
       [boneReportEl, filePickerEl, verifyEl].forEach(el => {
         if (el) { el.innerHTML = ""; el.classList.remove("show"); }
       });
@@ -440,17 +455,12 @@
       const u8 = new Uint8Array(buffer);
       const looksZip = u8[0] === 0x50 && u8[1] === 0x4b;
       const unity = isUnityFS(u8);
-
-      if (unity) {
-        setStatus("Cảnh báo: UnityFS — patch string có thể không hiệu lực nếu data nén/mã hóa trong bundle.", "err");
-      }
+      if (unity) setStatus("Cảnh báo: UnityFS", "err");
 
       if (looksZip && !unity) {
-        setStatus("Phát hiện ZIP, đang quét…");
         const entries = await parseZip(buffer);
         const validEntries = entries.filter(e => !e.isDir && e.rawData);
-        if (!validEntries.length) throw new Error("Không giải nén được file trong ZIP (mã hóa/hỏng)");
-
+        if (!validEntries.length) throw new Error("ZIP không giải nén được");
         let best = null, bestScore = -1;
         for (const entry of validEntries) {
           const found = scanBones(entry.rawData);
@@ -461,22 +471,16 @@
           validEntries.sort((a, b) => b.uncompSize - a.uncompSize);
           best = { entry: validEntries[0], found: scanBones(validEntries[0].rawData) };
         }
-
         state.isZip = true;
         state.zipEntries = entries;
         state.validEntries = validEntries;
         state.targetFileName = best.entry.name;
         state.targetFileBuffer = best.entry.rawData;
-        state.lastScan = best.found;
         state.selectedNames = new Set([best.entry.name]);
-
-        fileNameEl.textContent = file.name + " ➔ [" + best.entry.name + "] (" +
-          (best.entry.rawData.byteLength / 1024).toFixed(1) + " KB)";
+        fileNameEl.textContent = file.name + " ➔ [" + best.entry.name + "]";
         renderFilePicker(validEntries, best.entry.name);
         renderBoneReport(best.found);
-        setStatus(hasAimBones(best.found)
-          ? "Bone OK · chọn file (có thể nhiều) · chọn mode hoặc dry-run"
-          : "Cảnh báo: không thấy bone aim tiêu chuẩn.", hasAimBones(best.found) ? "ok" : "err");
+        setStatus(hasAimBones(best.found) ? "Bone OK" : "Cảnh báo: thiếu bone aim", hasAimBones(best.found) ? "ok" : "err");
         modesEl.classList.add("show");
       } else {
         state.isZip = false;
@@ -484,38 +488,32 @@
         state.selectedNames = new Set([file.name]);
         state.targetFileName = file.name;
         state.targetFileBuffer = buffer;
-        fileNameEl.textContent = file.name + " (" + (buffer.byteLength / 1024).toFixed(1) + " KB)" +
-          (unity ? " · UnityFS" : "");
+        fileNameEl.textContent = file.name + (unity ? " · UnityFS" : "");
         const found = scanBones(buffer);
-        state.lastScan = found;
         renderBoneReport(found);
-        setStatus(hasAimBones(found) ? "Bone OK · sẵn sàng" : "Cảnh báo: không thấy bone tiêu chuẩn.", hasAimBones(found) ? "ok" : "err");
+        setStatus(hasAimBones(found) ? "Bone OK" : "Cảnh báo: thiếu bone", hasAimBones(found) ? "ok" : "err");
         modesEl.classList.add("show");
       }
     } catch (e) {
-      setStatus(e.message || "Lỗi đọc tệp", "err");
+      setStatus(e.message || "Lỗi", "err");
       modesEl.classList.remove("show");
     }
   }
 
   async function runMode(mode) {
     if (!state.targetFileBuffer && !state.isZip) return;
+    state.lastMode = mode;
     state.dryRun = !!(dryRunEl && dryRunEl.checked);
-
     if (!state.dryRun && !checklistReady()) {
-      setStatus("Tick đủ checklist trước khi xuất file.", "err");
+      setStatus("Tick đủ checklist trước khi xuất cache.", "err");
       return;
     }
-
     try {
       setStatus(state.dryRun ? "Dry-run…" : "Đang patch…");
-
       if (state.isZip) {
         const names = state.selectedNames.size ? [...state.selectedNames] : [state.targetFileName];
         let totalHits = 0;
-        const allDetail = {};
-        const patchedMap = {};
-
+        const allDetail = {}, patchedMap = {};
         for (const name of names) {
           const entry = state.validEntries.find(e => e.name === name);
           if (!entry || !entry.rawData) continue;
@@ -525,22 +523,15 @@
           patchedMap[name] = result.buffer;
           if (names.length === 1) renderVerify(result, mode, state.dryRun);
         }
-
         if (totalHits === 0) {
-          setStatus('Không có chuỗi nào được thay cho mode "' + mode + '".', "err");
-          if (names.length !== 1) renderVerify({ buffer: state.targetFileBuffer, count: 0, detail: {} }, mode, state.dryRun);
+          setStatus('Không có hit cho mode "' + mode + '".', "err");
           return;
         }
-
-        if (names.length > 1) {
-          renderVerify({ buffer: state.targetFileBuffer, count: totalHits, detail: allDetail }, mode, state.dryRun);
-        }
-
+        if (names.length > 1) renderVerify({ buffer: state.targetFileBuffer, count: totalHits, detail: allDetail }, mode, state.dryRun);
         if (state.dryRun) {
-          setStatus("Dry-run: " + totalHits + " hits trên " + names.length + " file · chưa tải.", "ok");
+          setStatus("Dry-run: " + totalHits + " hits", "ok");
           return;
         }
-
         const packList = [];
         for (const entry of state.zipEntries) {
           if (entry.isDir) continue;
@@ -549,29 +540,17 @@
         }
         const outName = buildOutputFileName(state.originalFullName, mode);
         triggerDownload(createZip(packList), outName);
-        saveHistoryEntry({
-          name: state.originalFullName, mode: mode, hits: totalHits,
-          at: new Date().toISOString().slice(0, 16).replace("T", " ")
-        });
-        setStatus("Đã patch " + totalHits + " vị trí · " + names.length + " file ➔ " + outName, "ok");
+        saveHistoryEntry({ name: state.originalFullName, mode: mode, hits: totalHits, at: new Date().toISOString().slice(0, 16) });
+        setStatus("Patch " + totalHits + " ➔ " + outName, "ok");
       } else {
         const result = applyPatch(state.targetFileBuffer, mode);
         renderVerify(result, mode, state.dryRun);
-        if (result.count === 0) {
-          setStatus('Không có chuỗi nào được thay cho mode "' + mode + '".', "err");
-          return;
-        }
-        if (state.dryRun) {
-          setStatus("Dry-run: " + result.count + " hits · chưa tải.", "ok");
-          return;
-        }
+        if (result.count === 0) { setStatus("Không có hit", "err"); return; }
+        if (state.dryRun) { setStatus("Dry-run: " + result.count + " hits", "ok"); return; }
         const outName = buildOutputFileName(state.originalFullName, mode);
         triggerDownload(result.buffer, outName);
-        saveHistoryEntry({
-          name: state.originalFullName, mode: mode, hits: result.count,
-          at: new Date().toISOString().slice(0, 16).replace("T", " ")
-        });
-        setStatus("Đã patch " + result.count + " vị trí ➔ " + outName, "ok");
+        saveHistoryEntry({ name: state.originalFullName, mode: mode, hits: result.count, at: new Date().toISOString().slice(0, 16) });
+        setStatus("Patch " + result.count + " ➔ " + outName, "ok");
       }
     } catch (err) {
       setStatus(err.message || "Lỗi patch", "err");
@@ -587,12 +566,14 @@
     dropZone.classList.remove("dragover");
     if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
   });
-
   modesEl.addEventListener("click", e => {
     const btn = e.target.closest(".mode-btn");
     if (!btn) return;
     runMode(btn.dataset.mode);
   });
+
+  const exportBtn = document.getElementById("exportProxyPinBtn");
+  if (exportBtn) exportBtn.addEventListener("click", exportProxyPin);
 
   renderHistory();
 })();
