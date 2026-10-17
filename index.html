@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FF Cache Aim Patcher v1.2</title>
+  <title>FF Cache Aim Patcher v1.2.1</title>
   <style>
     :root {
       --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3;
@@ -116,7 +116,7 @@
 </head>
 <body>
   <h1>FF Cache Aim Patcher</h1>
-  <p class="sub">v1.2 · scan · multi-file · dry-run · custom pair · verify · checklist</p>
+  <p class="sub">v1.2.1 · scan · multi-file · dry-run · ProxyPin export · checklist</p>
   <button class="guide-btn" id="guideBtn" type="button">Hướng dẫn lấy file + iOS 27.2</button>
 
   <div class="drop" id="dropZone">
@@ -140,11 +140,20 @@
   </div>
 
   <div class="panel" id="checklist">
-    <div class="bone-title">Checklist trước khi xuất (bắt buộc nếu không dry-run)</div>
-    <label class="check-item"><input type="checkbox" /> Đã xem Bone scan / không rỗng (hoặc chấp nhận rủi ro)</label>
+    <div class="bone-title">Checklist trước khi xuất cache (bắt buộc nếu không dry-run)</div>
+    <label class="check-item"><input type="checkbox" /> Đã xem Bone scan</label>
     <label class="check-item"><input type="checkbox" /> Đã chọn đúng file trong ZIP (nếu có)</label>
-    <label class="check-item"><input type="checkbox" /> Biết path sẽ đắp (Filza / data game) — web không tự đắp iPhone</label>
-    <label class="check-item"><input type="checkbox" /> iOS 27.2: ESign chỉ cài IPA; LocalDevVPN/Filza mới ghi container</label>
+    <label class="check-item"><input type="checkbox" /> Biết path đắp — web không tự đắp iPhone</label>
+    <label class="check-item"><input type="checkbox" /> iOS 27.2: ESign / LocalDevVPN / Filza / ProxyPin</label>
+  </div>
+
+  <div class="panel" id="proxyPinPanel">
+    <div class="bone-title">Xuất cho ProxyPin</div>
+    <p class="muted" style="margin-bottom:0.5rem;font-size:0.8rem">JSON template import vào app ProxyPin (App Store). Không phải file cache bone. Aim proxy phụ thuộc script/config thật.</p>
+    <button type="button" class="mode-btn" id="exportProxyPinBtn" style="width:100%">
+      Xuất ProxyPin config (JSON)
+      <span>Import trong ProxyPin → Start → vào game</span>
+    </button>
   </div>
 
   <div class="modes" id="modes">
@@ -157,7 +166,7 @@
   <div class="panel" id="verify"></div>
   <div class="panel" id="history"></div>
   <div class="status" id="status"></div>
-  <footer>Client-side only · không upload server · v1.2.0</footer>
+  <footer>Client-side only · không upload server · v1.2.1</footer>
 
   <div class="modal-overlay" id="guideModal">
     <div class="modal">
@@ -166,38 +175,27 @@
         <button class="modal-close" id="guideClose" type="button">&times;</button>
       </div>
       <div class="guide-section">
-        <h3>Web này làm gì</h3>
+        <h3>Hai loại xuất</h3>
         <ul>
-          <li>Sửa chuỗi bone trong file cache (Head / Neck / Drag / Body)</li>
-          <li>Dry-run, multi-file ZIP, custom pair cùng độ dài, verify, checklist</li>
-          <li><strong>Không</strong> ghi vào iPhone / Free Fire / LocalDevVPN</li>
+          <li><strong>Cache bone</strong> — patch file game (cần Filza/chèn tay)</li>
+          <li><strong>ProxyPin JSON</strong> — import app ProxyPin, bắt traffic (không đắp cache)</li>
         </ul>
       </div>
       <div class="guide-section">
-        <h3>Android — lấy file</h3>
+        <h3>ProxyPin (dễ trên iOS 27.2 stock)</h3>
         <ol>
-          <li>MT Manager / Solid (root hoặc SAF)</li>
-          <li><code>/data/data/com.dts.freefireth/</code> hoặc <code>freefiremax</code> / <code>/Android/data/.../files/</code></li>
-          <li>Tìm <code>cache_res</code>, <code>gameassetbundles</code>, assets</li>
-          <li>Copy ra → patch trên web → ghi đè đúng path</li>
+          <li>Cài ProxyPin từ App Store</li>
+          <li>Web bấm <strong>Xuất ProxyPin config</strong> → lưu JSON</li>
+          <li>ProxyPin → Scripts/Import → chọn JSON</li>
+          <li>Bật HTTPS + trust cert nếu cần → Start</li>
+          <li>Mở Free Fire (template web chỉ là khung; script aim thật cần config nguồn khác nếu template chưa đủ)</li>
         </ol>
       </div>
       <div class="guide-section">
-        <h3>iOS 27.2 (iPhone)</h3>
+        <h3>Android cache</h3>
         <ol>
-          <li><strong>ESign</strong> = chỉ ký/cài IPA (ProxyVipVn, LocalDevVPN, Filza…)</li>
-          <li><strong>LocalDevVPN</strong> = bridge utun cho app mod — không import file web</li>
-          <li><strong>Filza</strong> (nếu còn sandbox escape trên build) = ghi đè trong container Application UUID</li>
-          <li>Stock không JB: hầu như <strong>không</strong> đắp được cache bằng tay</li>
-        </ol>
-        <p class="guide-note">Aim trên 27.2 thường đi app ProxyVipVn + LocalDevVPN, không phụ thuộc file web trừ khi tự chèn được file.</p>
-      </div>
-      <div class="guide-section">
-        <h3>Sau patch</h3>
-        <ol>
-          <li>Verify hits > 0, còn ít/không chuỗi cũ</li>
-          <li>Giữ đúng tên file gốc nếu game yêu cầu</li>
-          <li>Ghi đè path cũ → force stop game → mở lại</li>
+          <li>MT Manager: <code>/data/data/com.dts.freefireth/</code> hoặc freefiremax</li>
+          <li>Patch trên web → ghi đè đúng path</li>
         </ol>
       </div>
     </div>
@@ -208,10 +206,16 @@
     (function () {
       const tools = document.getElementById("tools");
       const modes = document.getElementById("modes");
+      const pinPanel = document.getElementById("proxyPinPanel");
       const obs = new MutationObserver(function () {
-        if (modes.classList.contains("show")) tools.classList.add("show");
+        if (modes.classList.contains("show")) {
+          tools.classList.add("show");
+          if (pinPanel) pinPanel.classList.add("show");
+        }
       });
       obs.observe(modes, { attributes: true, attributeFilter: ["class"] });
+      // ProxyPin export luôn hiện (không cần file cache)
+      if (pinPanel) pinPanel.classList.add("show");
       const btn = document.getElementById("guideBtn");
       const modal = document.getElementById("guideModal");
       const closeBtn = document.getElementById("guideClose");
