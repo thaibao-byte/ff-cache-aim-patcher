@@ -4,15 +4,10 @@ Client-side Free Fire / Free Fire Max cache editor.
 
 **https://thaibao-byte.github.io/ff-cache-aim-patcher/**
 
-## v1.2.0
+## v1.2.1
 
-- Bone scan + multi-select files in ZIP
-- Dry-run (report only, no download)
-- Custom from/to pair (same length required)
-- Diff-style verify after patch
-- Export checklist (blocked until ticked, unless dry-run)
-- localStorage history (metadata only)
-- UnityFS warning
-- Guide: Android paths + iOS 27.2 (ESign / LocalDevVPN / Filza limits)
+- All v1.2.0 features
+- **Xuất ProxyPin config (JSON)** — template import vào app ProxyPin (App Store)
+- Guide: ProxyPin ≠ cache bone file; aim proxy phụ thuộc script/config
 
-Web only rewrites bone strings. It does **not** write into iPhone app containers.
+Web only rewrites bone strings / exports templates. It does **not** write into iPhone app containers.
