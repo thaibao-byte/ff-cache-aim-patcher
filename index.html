@@ -3,221 +3,125 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FF Cache Aim Patcher</title>
+  <title>FF Cache Aim Patcher v1.2</title>
   <style>
     :root {
-      --bg: #0d1117;
-      --card: #161b22;
-      --border: #30363d;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --accent: #238636;
-      --accent-h: #2ea043;
-      --danger: #da3633;
-      --warn: #d29922;
+      --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3;
+      --muted: #8b949e; --accent: #238636; --danger: #da3633; --warn: #d29922;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 2rem 1rem;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem;
     }
-    h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
-    .sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 1rem; }
+    h1 { font-size: 1.45rem; margin-bottom: 0.2rem; }
+    .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.75rem; text-align: center; max-width: 520px; }
     .guide-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      padding: 0.45rem 0.9rem;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      cursor: pointer;
-      margin-bottom: 1.5rem;
-      transition: border-color 0.15s, color 0.15s;
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 0.4rem 0.85rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 1.25rem;
     }
     .guide-btn:hover { border-color: var(--accent); color: var(--text); }
     .drop {
-      width: 100%;
-      max-width: 520px;
-      border: 2px dashed var(--border);
-      border-radius: 12px;
-      padding: 2.5rem 1.5rem;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-      background: var(--card);
+      width: 100%; max-width: 520px; border: 2px dashed var(--border); border-radius: 12px;
+      padding: 2.2rem 1.4rem; text-align: center; cursor: pointer; background: var(--card);
     }
     .drop.dragover { border-color: var(--accent); background: #0d2818; }
-    .drop p { color: var(--muted); margin-top: 0.5rem; font-size: 0.875rem; }
-    #fileName { margin-top: 1rem; font-size: 0.8rem; color: var(--accent); word-break: break-all; }
-
+    .drop p { color: var(--muted); margin-top: 0.45rem; font-size: 0.85rem; }
+    #fileName { margin-top: 0.85rem; font-size: 0.78rem; color: var(--accent); word-break: break-all; }
     .panel {
-      width: 100%;
-      max-width: 520px;
-      margin-top: 1rem;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0.9rem 1rem;
-      display: none;
+      width: 100%; max-width: 520px; margin-top: 0.85rem; background: var(--card);
+      border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1rem; display: none;
     }
     .panel.show { display: block; }
-
-    .bone-title, .verify-title, .picker-label {
-      font-size: 0.75rem;
-      color: var(--muted);
-      margin-bottom: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+    .bone-title, .picker-label, .verify-title {
+      font-size: 0.72rem; color: var(--muted); margin-bottom: 0.45rem;
+      text-transform: uppercase; letter-spacing: 0.04em;
     }
-    .bone-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.85rem;
-      padding: 0.2rem 0;
-      border-bottom: 1px solid #21262d;
+    .bone-row, .hist-row {
+      display: flex; justify-content: space-between; gap: 0.5rem;
+      font-size: 0.82rem; padding: 0.18rem 0; border-bottom: 1px solid #21262d;
     }
-    .bone-row:last-child { border-bottom: none; }
+    .bone-row:last-child, .hist-row:last-child { border-bottom: none; }
     .bone-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .bone-count { color: var(--accent); font-weight: 600; }
+    .muted { color: var(--muted); font-size: 0.75rem; }
     .warn { color: var(--warn); font-size: 0.85rem; }
-
-    #filePicker select {
-      width: 100%;
-      background: #0d1117;
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.55rem 0.65rem;
-      font-size: 0.85rem;
+    .file-check {
+      display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0;
+      border-bottom: 1px solid #21262d; font-size: 0.82rem; cursor: pointer;
     }
-
-    .verify-line { font-size: 0.9rem; margin-bottom: 0.4rem; }
-    .verify-detail {
-      font-size: 0.8rem;
-      color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      margin: 0.4rem 0;
-      line-height: 1.45;
+    .file-check:last-child { border-bottom: none; }
+    .fc-name { flex: 1; word-break: break-all; font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; }
+    .fc-meta { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+    .tools {
+      width: 100%; max-width: 520px; margin-top: 0.85rem; display: none; flex-direction: column; gap: 0.55rem;
     }
-    .verify-ok { color: var(--accent); font-size: 0.85rem; margin-top: 0.35rem; }
-    .verify-warn { color: var(--warn); font-size: 0.85rem; margin-top: 0.35rem; }
-
+    .tools.show { display: flex; }
+    .tool-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .tool-row label { font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
+    .tool-row input[type="text"] {
+      flex: 1; min-width: 120px; background: #0d1117; border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.8rem;
+      font-family: ui-monospace, Menlo, monospace;
+    }
+    .check-item { display: flex; align-items: flex-start; gap: 0.45rem; font-size: 0.8rem; margin: 0.25rem 0; }
     .modes {
-      display: none;
-      width: 100%;
-      max-width: 520px;
-      margin-top: 1.25rem;
-      gap: 0.75rem;
-      flex-direction: column;
+      display: none; width: 100%; max-width: 520px; margin-top: 1rem; gap: 0.65rem; flex-direction: column;
     }
     .modes.show { display: flex; }
     .mode-btn {
-      background: var(--card);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 1rem 1.25rem;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: left;
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      padding: 0.9rem 1.1rem; border-radius: 8px; font-size: 0.95rem; font-weight: 600;
+      cursor: pointer; text-align: left;
     }
     .mode-btn:hover { border-color: var(--accent); background: #0d2818; }
-    .mode-btn span { display: block; font-size: 0.75rem; font-weight: 400; color: var(--muted); margin-top: 0.25rem; }
-
+    .mode-btn span { display: block; font-size: 0.72rem; font-weight: 400; color: var(--muted); margin-top: 0.2rem; }
+    .verify-line { font-size: 0.88rem; margin-bottom: 0.35rem; }
+    .verify-detail {
+      font-size: 0.78rem; color: var(--muted); font-family: ui-monospace, Menlo, monospace;
+      margin: 0.35rem 0; line-height: 1.45;
+    }
+    .verify-ok { color: var(--accent); font-size: 0.82rem; margin-top: 0.3rem; }
+    .verify-warn { color: var(--warn); font-size: 0.82rem; margin-top: 0.3rem; }
     .status {
-      margin-top: 1.25rem;
-      font-size: 0.875rem;
-      color: var(--muted);
-      min-height: 1.25rem;
-      text-align: center;
-      max-width: 520px;
-      word-break: break-word;
+      margin-top: 1.1rem; font-size: 0.85rem; color: var(--muted); min-height: 1.2rem;
+      text-align: center; max-width: 520px; word-break: break-word;
     }
     .status.ok { color: var(--accent); }
     .status.err { color: var(--danger); }
-    footer { margin-top: auto; padding-top: 3rem; font-size: 0.75rem; color: var(--muted); }
-
+    footer { margin-top: auto; padding-top: 2.5rem; font-size: 0.72rem; color: var(--muted); }
     .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.72);
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 100;
+      align-items: center; justify-content: center; padding: 1rem;
     }
     .modal-overlay.show { display: flex; }
     .modal {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      max-width: 520px;
-      width: 100%;
-      max-height: 85vh;
-      overflow-y: auto;
-      padding: 1.25rem 1.35rem 1.5rem;
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      max-width: 520px; width: 100%; max-height: 85vh; overflow-y: auto; padding: 1.2rem 1.3rem 1.4rem;
     }
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-    }
-    .modal-header h2 { font-size: 1.1rem; }
-    .modal-close {
-      background: transparent;
-      border: none;
-      color: var(--muted);
-      font-size: 1.4rem;
-      cursor: pointer;
-      line-height: 1;
-      padding: 0.2rem 0.4rem;
-    }
-    .modal-close:hover { color: var(--text); }
-    .guide-section { margin-bottom: 1.1rem; }
-    .guide-section h3 {
-      font-size: 0.9rem;
-      margin-bottom: 0.45rem;
-      color: var(--accent);
-    }
-    .guide-section ol, .guide-section ul {
-      padding-left: 1.2rem;
-      font-size: 0.85rem;
-      line-height: 1.55;
-      color: var(--text);
-    }
-    .guide-section li { margin-bottom: 0.3rem; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.9rem; }
+    .modal-header h2 { font-size: 1.05rem; }
+    .modal-close { background: none; border: none; color: var(--muted); font-size: 1.35rem; cursor: pointer; }
+    .guide-section { margin-bottom: 1rem; }
+    .guide-section h3 { font-size: 0.88rem; margin-bottom: 0.4rem; color: var(--accent); }
+    .guide-section ol, .guide-section ul { padding-left: 1.15rem; font-size: 0.82rem; line-height: 1.5; }
+    .guide-section li { margin-bottom: 0.25rem; }
     .guide-section code {
-      background: #0d1117;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 0.1rem 0.35rem;
-      font-size: 0.8rem;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: #0d1117; border: 1px solid var(--border); border-radius: 4px;
+      padding: 0.08rem 0.3rem; font-size: 0.78rem; font-family: ui-monospace, Menlo, monospace;
     }
-    .guide-note {
-      font-size: 0.8rem;
-      color: var(--warn);
-      margin-top: 0.35rem;
-    }
+    .guide-note { font-size: 0.78rem; color: var(--warn); margin-top: 0.3rem; }
   </style>
 </head>
 <body>
   <h1>FF Cache Aim Patcher</h1>
-  <p class="sub">Drop cache → scan bone → chọn file (nếu ZIP) → chọn mode → verify + tải</p>
-  <button class="guide-btn" id="guideBtn" type="button">Hướng dẫn lấy file cache</button>
+  <p class="sub">v1.2 · scan · multi-file · dry-run · custom pair · verify · checklist</p>
+  <button class="guide-btn" id="guideBtn" type="button">Hướng dẫn lấy file + iOS 27.2</button>
 
   <div class="drop" id="dropZone">
     <strong>Kéo thả file cache vào đây</strong>
-    <p>hoặc bấm để chọn</p>
+    <p>hoặc bấm để chọn · ZIP / raw / UnityFS</p>
     <input type="file" id="fileInput" hidden />
     <div id="fileName"></div>
   </div>
@@ -225,93 +129,76 @@
   <div class="panel" id="filePicker"></div>
   <div class="panel" id="boneReport"></div>
 
+  <div class="tools" id="tools">
+    <div class="tool-row">
+      <label><input type="checkbox" id="dryRun" /> Dry-run (chỉ report, không tải)</label>
+    </div>
+    <div class="tool-row">
+      <input type="text" id="customFrom" placeholder="custom from (cùng length)" spellcheck="false" />
+      <input type="text" id="customTo" placeholder="custom to" spellcheck="false" />
+    </div>
+  </div>
+
+  <div class="panel" id="checklist">
+    <div class="bone-title">Checklist trước khi xuất (bắt buộc nếu không dry-run)</div>
+    <label class="check-item"><input type="checkbox" /> Đã xem Bone scan / không rỗng (hoặc chấp nhận rủi ro)</label>
+    <label class="check-item"><input type="checkbox" /> Đã chọn đúng file trong ZIP (nếu có)</label>
+    <label class="check-item"><input type="checkbox" /> Biết path sẽ đắp (Filza / data game) — web không tự đắp iPhone</label>
+    <label class="check-item"><input type="checkbox" /> iOS 27.2: ESign chỉ cài IPA; LocalDevVPN/Filza mới ghi container</label>
+  </div>
+
   <div class="modes" id="modes">
-    <button class="mode-btn" data-mode="head">
-      Aim Head / Lock
-      <span>hips / root / neck → head (aim đầu)</span>
-    </button>
-    <button class="mode-btn" data-mode="neck">
-      Aim Neck
-      <span>head / hips / root → neck</span>
-    </button>
-    <button class="mode-btn" data-mode="drag">
-      Aim Drag
-      <span>head / hips / neck → root (drag)</span>
-    </button>
-    <button class="mode-btn" data-mode="body">
-      Aim Body
-      <span>head / root / neck → hips (thân)</span>
-    </button>
+    <button class="mode-btn" data-mode="head">Aim Head / Lock<span>hips / root / neck → head</span></button>
+    <button class="mode-btn" data-mode="neck">Aim Neck<span>head / hips / root → neck</span></button>
+    <button class="mode-btn" data-mode="drag">Aim Drag<span>head / hips / neck → root</span></button>
+    <button class="mode-btn" data-mode="body">Aim Body<span>head / root / neck → hips</span></button>
   </div>
 
   <div class="panel" id="verify"></div>
+  <div class="panel" id="history"></div>
   <div class="status" id="status"></div>
-  <footer>Client-side only · file không upload lên server · v1.1.1</footer>
+  <footer>Client-side only · không upload server · v1.2.0</footer>
 
   <div class="modal-overlay" id="guideModal">
     <div class="modal">
       <div class="modal-header">
-        <h2>Hướng dẫn lấy file cache</h2>
-        <button class="modal-close" id="guideClose" type="button" aria-label="Đóng">&times;</button>
+        <h2>Hướng dẫn + giới hạn</h2>
+        <button class="modal-close" id="guideClose" type="button">&times;</button>
       </div>
-
       <div class="guide-section">
-        <h3>Android (Free Fire / FF Max)</h3>
-        <ol>
-          <li>Cài file manager có quyền root hoặc dùng <code>MT Manager</code> / <code>Solid Explorer</code> (có thể cần root / Shizuku).</li>
-          <li>Vào thư mục data game, thường là:
-            <ul>
-              <li><code>/data/data/com.dts.freefireth/</code></li>
-              <li><code>/data/data/com.dts.freefiremax/</code></li>
-              <li>hoặc <code>/Android/data/com.dts.freefireth/files/</code></li>
-            </ul>
-          </li>
-          <li>Tìm thư mục cache / res / asset, tên hay gặp:
-            <ul>
-              <li><code>cache_res</code></li>
-              <li><code>gameassetbundles</code></li>
-              <li><code>il2cpp</code> / <code>assets</code></li>
-            </ul>
-          </li>
-          <li>Copy file cache / bundle cần patch ra ngoài (Download hoặc /sdcard).</li>
-          <li>Mở tool này → kéo thả file vừa copy.</li>
-        </ol>
-        <p class="guide-note">Không root: một số máy chỉ thấy được <code>/Android/data/...</code> qua file manager hỗ trợ SAF. File trong <code>/data/data</code> hầu như cần root.</p>
-      </div>
-
-      <div class="guide-section">
-        <h3>iOS</h3>
-        <ol>
-          <li>Máy jailbreak hoặc dùng Filza / TrollStore file manager.</li>
-          <li>Đường dẫn thường:
-            <ul>
-              <li><code>/var/mobile/Containers/Data/Application/<UUID>/</code></li>
-              <li>trong đó tìm <code>Library/Caches</code> hoặc <code>Documents</code> của Free Fire / FF Max.</li>
-            </ul>
-          </li>
-          <li>Copy file cache / bundle ra Files app hoặc share về máy.</li>
-          <li>Mở tool → chọn file.</li>
-        </ol>
-        <p class="guide-note">iOS 27.x + LocalDevVPN / tool mod riêng thì quy trình lấy file có thể khác — làm theo tool đang dùng trên máy.</p>
-      </div>
-
-      <div class="guide-section">
-        <h3>Sau khi patch</h3>
-        <ol>
-          <li>Xem <strong>Bone scan</strong> + <strong>Verify</strong> — phải thấy đã thay chuỗi, không còn (hoặc còn ít) chuỗi cũ.</li>
-          <li>Đổi tên / giữ đúng tên file gốc nếu game bắt buộc.</li>
-          <li>Copy <strong>đúng path</strong> đã lấy lúc đầu, ghi đè file gốc.</li>
-          <li>Force stop game → xóa cache tạm (nếu có) → mở lại game test aim.</li>
-        </ol>
-      </div>
-
-      <div class="guide-section">
-        <h3>Lưu ý</h3>
+        <h3>Web này làm gì</h3>
         <ul>
-          <li>Update game thường đổi cache → phải lấy file mới rồi patch lại.</li>
-          <li>Nếu scan không ra bone → file sai / mã hóa / version mới, đừng dump lung tung.</li>
-          <li>Toàn bộ xử lý trên trình duyệt, file không upload server.</li>
+          <li>Sửa chuỗi bone trong file cache (Head / Neck / Drag / Body)</li>
+          <li>Dry-run, multi-file ZIP, custom pair cùng độ dài, verify, checklist</li>
+          <li><strong>Không</strong> ghi vào iPhone / Free Fire / LocalDevVPN</li>
         </ul>
+      </div>
+      <div class="guide-section">
+        <h3>Android — lấy file</h3>
+        <ol>
+          <li>MT Manager / Solid (root hoặc SAF)</li>
+          <li><code>/data/data/com.dts.freefireth/</code> hoặc <code>freefiremax</code> / <code>/Android/data/.../files/</code></li>
+          <li>Tìm <code>cache_res</code>, <code>gameassetbundles</code>, assets</li>
+          <li>Copy ra → patch trên web → ghi đè đúng path</li>
+        </ol>
+      </div>
+      <div class="guide-section">
+        <h3>iOS 27.2 (iPhone)</h3>
+        <ol>
+          <li><strong>ESign</strong> = chỉ ký/cài IPA (ProxyVipVn, LocalDevVPN, Filza…)</li>
+          <li><strong>LocalDevVPN</strong> = bridge utun cho app mod — không import file web</li>
+          <li><strong>Filza</strong> (nếu còn sandbox escape trên build) = ghi đè trong container Application UUID</li>
+          <li>Stock không JB: hầu như <strong>không</strong> đắp được cache bằng tay</li>
+        </ol>
+        <p class="guide-note">Aim trên 27.2 thường đi app ProxyVipVn + LocalDevVPN, không phụ thuộc file web trừ khi tự chèn được file.</p>
+      </div>
+      <div class="guide-section">
+        <h3>Sau patch</h3>
+        <ol>
+          <li>Verify hits > 0, còn ít/không chuỗi cũ</li>
+          <li>Giữ đúng tên file gốc nếu game yêu cầu</li>
+          <li>Ghi đè path cũ → force stop game → mở lại</li>
+        </ol>
       </div>
     </div>
   </div>
@@ -319,20 +206,21 @@
   <script src="patcher.js"></script>
   <script>
     (function () {
+      const tools = document.getElementById("tools");
+      const modes = document.getElementById("modes");
+      const obs = new MutationObserver(function () {
+        if (modes.classList.contains("show")) tools.classList.add("show");
+      });
+      obs.observe(modes, { attributes: true, attributeFilter: ["class"] });
       const btn = document.getElementById("guideBtn");
       const modal = document.getElementById("guideModal");
       const closeBtn = document.getElementById("guideClose");
-      if (!btn || !modal) return;
       function open() { modal.classList.add("show"); }
       function close() { modal.classList.remove("show"); }
       btn.addEventListener("click", open);
       closeBtn.addEventListener("click", close);
-      modal.addEventListener("click", function (e) {
-        if (e.target === modal) close();
-      });
-      document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") close();
-      });
+      modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
     })();
   </script>
 </body>
