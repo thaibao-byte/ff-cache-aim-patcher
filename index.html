@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FF Cache Aim Patcher v1.2.1</title>
+  <title>FF Cache Aim Patcher v1.3</title>
   <style>
     :root {
       --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3;
@@ -17,11 +17,14 @@
     }
     h1 { font-size: 1.45rem; margin-bottom: 0.2rem; }
     .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.75rem; text-align: center; max-width: 520px; }
+    .guide-row { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin-bottom: 1.1rem; }
     .guide-btn {
       background: transparent; border: 1px solid var(--border); color: var(--muted);
-      padding: 0.4rem 0.85rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 1.25rem;
+      padding: 0.4rem 0.85rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer;
     }
     .guide-btn:hover { border-color: var(--accent); color: var(--text); }
+    .guide-btn.pin { border-color: #6e40c9; color: #d2a8ff; }
+    .guide-btn.pin:hover { background: #1f0f3a; }
     .drop {
       width: 100%; max-width: 520px; border: 2px dashed var(--border); border-radius: 12px;
       padding: 2.2rem 1.4rem; text-align: center; cursor: pointer; background: var(--card);
@@ -34,6 +37,7 @@
       border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1rem; display: none;
     }
     .panel.show { display: block; }
+    .panel.pin-border { border-color: #6e40c9; }
     .bone-title, .picker-label, .verify-title {
       font-size: 0.72rem; color: var(--muted); margin-bottom: 0.45rem;
       text-transform: uppercase; letter-spacing: 0.04em;
@@ -60,8 +64,8 @@
     .tools.show { display: flex; }
     .tool-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
     .tool-row label { font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
-    .tool-row input[type="text"] {
-      flex: 1; min-width: 120px; background: #0d1117; border: 1px solid var(--border);
+    .tool-row input[type="text"], .tool-row select {
+      flex: 1; min-width: 100px; background: #0d1117; border: 1px solid var(--border);
       color: var(--text); border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.8rem;
       font-family: ui-monospace, Menlo, monospace;
     }
@@ -76,6 +80,8 @@
       cursor: pointer; text-align: left;
     }
     .mode-btn:hover { border-color: var(--accent); background: #0d2818; }
+    .mode-btn.pin-btn { border-color: #6e40c9; }
+    .mode-btn.pin-btn:hover { background: #1f0f3a; border-color: #a371f7; }
     .mode-btn span { display: block; font-size: 0.72rem; font-weight: 400; color: var(--muted); margin-top: 0.2rem; }
     .verify-line { font-size: 0.88rem; margin-bottom: 0.35rem; }
     .verify-detail {
@@ -105,6 +111,7 @@
     .modal-close { background: none; border: none; color: var(--muted); font-size: 1.35rem; cursor: pointer; }
     .guide-section { margin-bottom: 1rem; }
     .guide-section h3 { font-size: 0.88rem; margin-bottom: 0.4rem; color: var(--accent); }
+    .guide-section h3.pin-h { color: #d2a8ff; }
     .guide-section ol, .guide-section ul { padding-left: 1.15rem; font-size: 0.82rem; line-height: 1.5; }
     .guide-section li { margin-bottom: 0.25rem; }
     .guide-section code {
@@ -116,12 +123,15 @@
 </head>
 <body>
   <h1>FF Cache Aim Patcher</h1>
-  <p class="sub">v1.2.1 · scan · multi-file · dry-run · ProxyPin export · checklist</p>
-  <button class="guide-btn" id="guideBtn" type="button">Hướng dẫn lấy file + iOS 27.2</button>
+  <p class="sub">v1.3 · cache bone · ProxyPin kit · guide full iOS 15+</p>
+  <div class="guide-row">
+    <button class="guide-btn" id="guideBtn" type="button">Hướng dẫn cache + iOS</button>
+    <button class="guide-btn pin" id="proxyGuideBtn" type="button">ProxyPin full steps</button>
+  </div>
 
   <div class="drop" id="dropZone">
     <strong>Kéo thả file cache vào đây</strong>
-    <p>hoặc bấm để chọn · ZIP / raw / UnityFS</p>
+    <p>hoặc bấm · ZIP / raw · (không bắt buộc nếu chỉ xuất ProxyPin)</p>
     <input type="file" id="fileInput" hidden />
     <div id="fileName"></div>
   </div>
@@ -140,19 +150,35 @@
   </div>
 
   <div class="panel" id="checklist">
-    <div class="bone-title">Checklist trước khi xuất cache (bắt buộc nếu không dry-run)</div>
+    <div class="bone-title">Checklist xuất cache</div>
     <label class="check-item"><input type="checkbox" /> Đã xem Bone scan</label>
-    <label class="check-item"><input type="checkbox" /> Đã chọn đúng file trong ZIP (nếu có)</label>
-    <label class="check-item"><input type="checkbox" /> Biết path đắp — web không tự đắp iPhone</label>
-    <label class="check-item"><input type="checkbox" /> iOS 27.2: ESign / LocalDevVPN / Filza / ProxyPin</label>
+    <label class="check-item"><input type="checkbox" /> Đã chọn đúng file trong ZIP</label>
+    <label class="check-item"><input type="checkbox" /> Biết path đắp</label>
+    <label class="check-item"><input type="checkbox" /> iOS: Filza / LocalDevVPN nếu cần</label>
   </div>
 
-  <div class="panel" id="proxyPinPanel">
-    <div class="bone-title">Xuất cho ProxyPin</div>
-    <p class="muted" style="margin-bottom:0.5rem;font-size:0.8rem">JSON template import vào app ProxyPin (App Store). Không phải file cache bone. Aim proxy phụ thuộc script/config thật.</p>
-    <button type="button" class="mode-btn" id="exportProxyPinBtn" style="width:100%">
-      Xuất ProxyPin config (JSON)
-      <span>Import trong ProxyPin → Start → vào game</span>
+  <div class="panel pin-border show" id="proxyPinPanel">
+    <div class="bone-title">ProxyPin kit (liên kết tool)</div>
+    <p class="muted" style="margin-bottom:0.55rem;font-size:0.8rem">
+      Xuất gói JSON + checklist đúng luồng video: cert → import script → Start → Free Fire.
+      Không chứa payload Delta / key server bên thứ 3.
+    </p>
+    <div class="tool-row" style="margin-bottom:0.55rem">
+      <label style="color:var(--muted);font-size:0.8rem">Mode gắn script:</label>
+      <select id="pinMode">
+        <option value="head">head</option>
+        <option value="neck">neck</option>
+        <option value="drag">drag</option>
+        <option value="body">body</option>
+      </select>
+    </div>
+    <button type="button" class="mode-btn pin-btn" id="exportProxyPinBtn" style="width:100%;margin-bottom:0.5rem">
+      1) Xuất ProxyPin package (JSON)
+      <span>Scripts → Nhập trong ProxyPin</span>
+    </button>
+    <button type="button" class="mode-btn pin-btn" id="exportChecklistBtn" style="width:100%">
+      2) Xuất checklist TXT (các bước video)
+      <span>In / lưu Notes khi setup</span>
     </button>
   </div>
 
@@ -166,36 +192,89 @@
   <div class="panel" id="verify"></div>
   <div class="panel" id="history"></div>
   <div class="status" id="status"></div>
-  <footer>Client-side only · không upload server · v1.2.1</footer>
+  <footer>Client-side · v1.3 · https://thaibao-byte.github.io/ff-cache-aim-patcher/</footer>
 
   <div class="modal-overlay" id="guideModal">
     <div class="modal">
       <div class="modal-header">
-        <h2>Hướng dẫn + giới hạn</h2>
+        <h2>Hướng dẫn cache</h2>
         <button class="modal-close" id="guideClose" type="button">&times;</button>
       </div>
       <div class="guide-section">
-        <h3>Hai loại xuất</h3>
+        <h3>Hai đường trong tool</h3>
         <ul>
-          <li><strong>Cache bone</strong> — patch file game (cần Filza/chèn tay)</li>
-          <li><strong>ProxyPin JSON</strong> — import app ProxyPin, bắt traffic (không đắp cache)</li>
+          <li><strong>Cache bone</strong> — patch file game (Android/Filza)</li>
+          <li><strong>ProxyPin kit</strong> — import app ProxyPin (iOS 15+ stock)</li>
         </ul>
-      </div>
-      <div class="guide-section">
-        <h3>ProxyPin (dễ trên iOS 27.2 stock)</h3>
-        <ol>
-          <li>Cài ProxyPin từ App Store</li>
-          <li>Web bấm <strong>Xuất ProxyPin config</strong> → lưu JSON</li>
-          <li>ProxyPin → Scripts/Import → chọn JSON</li>
-          <li>Bật HTTPS + trust cert nếu cần → Start</li>
-          <li>Mở Free Fire (template web chỉ là khung; script aim thật cần config nguồn khác nếu template chưa đủ)</li>
-        </ol>
       </div>
       <div class="guide-section">
         <h3>Android cache</h3>
         <ol>
           <li>MT Manager: <code>/data/data/com.dts.freefireth/</code> hoặc freefiremax</li>
           <li>Patch trên web → ghi đè đúng path</li>
+        </ol>
+      </div>
+      <div class="guide-section">
+        <h3>iOS cache</h3>
+        <ol>
+          <li>ESign cài Filza / LocalDevVPN nếu còn ghi container</li>
+          <li>Stock 27.x: thường không đắp cache — dùng ProxyPin kit</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="proxyGuideModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>ProxyPin — full steps</h2>
+        <button class="modal-close" id="proxyGuideClose" type="button">&times;</button>
+      </div>
+      <div class="guide-section">
+        <h3 class="pin-h">Liên kết với tool này</h3>
+        <ol>
+          <li>Web bấm <strong>Xuất ProxyPin package</strong> → lưu JSON</li>
+          <li>Làm các bước dưới (giống video)</li>
+          <li>ProxyPin → Script → <strong>Nhập</strong> → chọn JSON từ tool</li>
+          <li>Start (Play) → mở Free Fire</li>
+        </ol>
+        <p class="guide-note">Package = template + guide. Script aim thương mại (Delta) là file/key riêng — tool không ship.</p>
+      </div>
+      <div class="guide-section">
+        <h3 class="pin-h">1 — Cài app</h3>
+        <ol>
+          <li>App Store → <code>ProxyPin - Open Source Capture</code></li>
+        </ol>
+      </div>
+      <div class="guide-section">
+        <h3 class="pin-h">2 — Cài đặt proxy</h3>
+        <ol>
+          <li>Tab bánh răng</li>
+          <li>Bật SOCKS5 + HTTP/2</li>
+          <li>Vào Proxy HTTPS</li>
+        </ol>
+      </div>
+      <div class="guide-section">
+        <h3 class="pin-h">3 — Chứng chỉ CA</h3>
+        <ol>
+          <li>Download Certificate</li>
+          <li>Cài đặt chung → Quản lý VPN &amp; thiết bị → cài ProxyPin CA</li>
+          <li>Giới thiệu → Cài đặt tin cậy chứng nhận → bật ProxyPin CA</li>
+        </ol>
+      </div>
+      <div class="guide-section">
+        <h3 class="pin-h">4 — Import từ tool</h3>
+        <ol>
+          <li>Cấu hình → Script → Bật Script → Nhập</li>
+          <li>Chọn JSON xuất từ web</li>
+        </ol>
+      </div>
+      <div class="guide-section">
+        <h3 class="pin-h">5 — Chạy</h3>
+        <ol>
+          <li>All Requests → Play (VPN)</li>
+          <li>Mở Free Fire</li>
+          <li>Menu/key bên thứ 3 (nếu có) — không thuộc tool</li>
         </ol>
       </div>
     </div>
@@ -206,25 +285,25 @@
     (function () {
       const tools = document.getElementById("tools");
       const modes = document.getElementById("modes");
-      const pinPanel = document.getElementById("proxyPinPanel");
       const obs = new MutationObserver(function () {
-        if (modes.classList.contains("show")) {
-          tools.classList.add("show");
-          if (pinPanel) pinPanel.classList.add("show");
-        }
+        if (modes.classList.contains("show")) tools.classList.add("show");
       });
       obs.observe(modes, { attributes: true, attributeFilter: ["class"] });
-      // ProxyPin export luôn hiện (không cần file cache)
-      if (pinPanel) pinPanel.classList.add("show");
-      const btn = document.getElementById("guideBtn");
-      const modal = document.getElementById("guideModal");
-      const closeBtn = document.getElementById("guideClose");
-      function open() { modal.classList.add("show"); }
-      function close() { modal.classList.remove("show"); }
-      btn.addEventListener("click", open);
-      closeBtn.addEventListener("click", close);
-      modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
-      document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+      function wire(btnId, modalId, closeId) {
+        const btn = document.getElementById(btnId);
+        const modal = document.getElementById(modalId);
+        const closeBtn = document.getElementById(closeId);
+        if (!btn || !modal) return;
+        btn.addEventListener("click", function () { modal.classList.add("show"); });
+        if (closeBtn) closeBtn.addEventListener("click", function () { modal.classList.remove("show"); });
+        modal.addEventListener("click", function (e) { if (e.target === modal) modal.classList.remove("show"); });
+      }
+      wire("guideBtn", "guideModal", "guideClose");
+      wire("proxyGuideBtn", "proxyGuideModal", "proxyGuideClose");
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        document.querySelectorAll(".modal-overlay.show").forEach(function (m) { m.classList.remove("show"); });
+      });
     })();
   </script>
 </body>
