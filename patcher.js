@@ -9,6 +9,11 @@
   const boneReportEl = document.getElementById("boneReport");
   const filePickerEl = document.getElementById("filePicker");
   const verifyEl = document.getElementById("verify");
+  const dryRunEl = document.getElementById("dryRun");
+  const customFromEl = document.getElementById("customFrom");
+  const customToEl = document.getElementById("customTo");
+  const historyEl = document.getElementById("history");
+  const checklistEl = document.getElementById("checklist");
 
   let state = {
     isZip: false,
@@ -18,10 +23,14 @@
     originalFullName: "",
     zipEntries: [],
     validEntries: [],
-    lastScan: []
+    lastScan: [],
+    selectedNames: new Set(),
+    dryRun: false
   };
 
-  // QUY TẮC CỐT LÕI: from.length PHẢI BẰNG to.length
+  const HISTORY_KEY = "ff_patcher_history_v1";
+  const MAX_HISTORY = 5;
+
   const PATCHES = {
     head: [
       { from: "bone_Hips", to: "bone_Head" },
@@ -129,9 +138,8 @@
   }
 
   function hasAimBones(found) {
-    const names = found.map(f => f.name);
-    return names.some(n =>
-      /bone_Head|Bone_Head|Bip001 Head|bone_Neck|Bone_Neck|Bip001 Neck|bone_Hips|Bone_Hips|bone_Root|Bone_Root/i.test(n)
+    return found.some(f =>
+      /bone_Head|Bone_Head|Bip001 Head|bone_Neck|Bone_Neck|Bip001 Neck|bone_Hips|Bone_Hips|bone_Root|Bone_Root/i.test(f.name)
     );
   }
 
@@ -141,16 +149,11 @@
       u8[3] === 0x74 && u8[4] === 0x79 && u8[5] === 0x46 && u8[6] === 0x53;
   }
 
-  // --- ZIP ENGINE ---
-
   const crcTable = (function () {
-    let c;
     const table = new Uint32Array(256);
     for (let n = 0; n < 256; n++) {
-      c = n;
-      for (let k = 0; k < 8; k++) {
-        c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
-      }
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
       table[n] = c;
     }
     return table;
@@ -159,9 +162,7 @@
   function calcCRC32(buf) {
     const u8 = new Uint8Array(buf);
     let crc = 0 ^ (-1);
-    for (let i = 0; i < u8.length; i++) {
-      crc = (crc >>> 8) ^ crcTable[(crc ^ u8[i]) & 0xFF];
-    }
+    for (let i = 0; i < u8.length; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ u8[i]) & 0xFF];
     return (crc ^ (-1)) >>> 0;
   }
 
@@ -169,7 +170,6 @@
     const view = new Uint8Array(arrayBuffer);
     const entries = [];
     let i = 0;
-
     while (i < view.length - 30) {
       if (view[i] === 0x50 && view[i + 1] === 0x4b && view[i + 2] === 0x03 && view[i + 3] === 0x04) {
         const compMethod = view[i + 8] | (view[i + 9] << 8);
@@ -177,15 +177,10 @@
         const uncompSize = (view[i + 22] | (view[i + 23] << 8) | (view[i + 24] << 16) | (view[i + 25] << 24)) >>> 0;
         const nameLen = view[i + 26] | (view[i + 27] << 8);
         const extraLen = view[i + 28] | (view[i + 29] << 8);
-
         const nameStart = i + 30;
-        const nameBytes = view.slice(nameStart, nameStart + nameLen);
-        const name = new TextDecoder().decode(nameBytes);
+        const name = new TextDecoder().decode(view.slice(nameStart, nameStart + nameLen));
         const dataStart = nameStart + nameLen + extraLen;
-
         let rawData = null;
-        let isDeflated = false;
-
         if (compMethod === 0) {
           rawData = view.slice(dataStart, dataStart + uncompSize);
         } else if (compMethod === 8 && typeof DecompressionStream !== "undefined") {
@@ -195,32 +190,15 @@
             const stream = new Blob([compressed]).stream().pipeThrough(ds);
             const ab = await new Response(stream).arrayBuffer();
             rawData = new Uint8Array(ab);
-            isDeflated = true;
-          } catch (_) {
-            rawData = null;
-          }
+          } catch (_) { rawData = null; }
         }
-
         entries.push({
-          name: name,
-          headerOffset: i,
-          dataStart: dataStart,
-          compMethod: compMethod,
-          compSize: compSize,
-          uncompSize: uncompSize,
+          name, headerOffset: i, dataStart, compMethod, compSize, uncompSize,
           rawData: rawData ? rawData.buffer : null,
-          isDir: name.endsWith("/"),
-          isDeflated: isDeflated
+          isDir: name.endsWith("/")
         });
-
-        if (compSize > 0) {
-          i = dataStart + compSize;
-        } else {
-          i++;
-        }
-      } else {
-        i++;
-      }
+        i = compSize > 0 ? dataStart + compSize : i + 1;
+      } else i++;
     }
     return entries;
   }
@@ -229,112 +207,87 @@
     const parts = [];
     const centralDir = [];
     let offset = 0;
-
     for (const f of files) {
       const nameBytes = new TextEncoder().encode(f.name);
       const data = new Uint8Array(f.buffer);
       const crc = calcCRC32(data);
       const size = data.length;
-
       const lh = new Uint8Array(30 + nameBytes.length);
       const lhView = new DataView(lh.buffer);
       lhView.setUint32(0, 0x04034b50, true);
       lhView.setUint16(4, 20, true);
-      lhView.setUint16(6, 0, true);
       lhView.setUint16(8, 0, true);
-      lhView.setUint16(10, 0, true);
-      lhView.setUint16(12, 0, true);
       lhView.setUint32(14, crc, true);
       lhView.setUint32(18, size, true);
       lhView.setUint32(22, size, true);
       lhView.setUint16(26, nameBytes.length, true);
-      lhView.setUint16(28, 0, true);
       lh.set(nameBytes, 30);
-
-      parts.push(lh);
-      parts.push(data);
-
+      parts.push(lh, data);
       const cd = new Uint8Array(46 + nameBytes.length);
       const cdView = new DataView(cd.buffer);
       cdView.setUint32(0, 0x02014b50, true);
       cdView.setUint16(4, 20, true);
       cdView.setUint16(6, 20, true);
-      cdView.setUint16(8, 0, true);
-      cdView.setUint16(10, 0, true);
-      cdView.setUint16(12, 0, true);
-      cdView.setUint16(14, 0, true);
       cdView.setUint32(16, crc, true);
       cdView.setUint32(20, size, true);
       cdView.setUint32(24, size, true);
       cdView.setUint16(28, nameBytes.length, true);
-      cdView.setUint16(30, 0, true);
-      cdView.setUint16(32, 0, true);
-      cdView.setUint16(34, 0, true);
-      cdView.setUint16(36, 0, true);
-      cdView.setUint32(38, 0, true);
       cdView.setUint32(42, offset, true);
       cd.set(nameBytes, 46);
-
       centralDir.push(cd);
       offset += lh.length + size;
     }
-
     const cdStart = offset;
     let cdSize = 0;
-    for (const cd of centralDir) {
-      parts.push(cd);
-      cdSize += cd.length;
-    }
-
+    for (const cd of centralDir) { parts.push(cd); cdSize += cd.length; }
     const eocd = new Uint8Array(22);
     const eocdView = new DataView(eocd.buffer);
     eocdView.setUint32(0, 0x06054b50, true);
-    eocdView.setUint16(4, 0, true);
-    eocdView.setUint16(6, 0, true);
     eocdView.setUint16(8, files.length, true);
     eocdView.setUint16(10, files.length, true);
     eocdView.setUint32(12, cdSize, true);
     eocdView.setUint32(16, cdStart, true);
-    eocdView.setUint16(20, 0, true);
     parts.push(eocd);
-
     return new Blob(parts, { type: "application/zip" });
   }
 
-  // --- CORE ---
+  function getPatchList(mode) {
+    const list = (PATCHES[mode] || []).slice();
+    const cf = (customFromEl && customFromEl.value || "").trim();
+    const ct = (customToEl && customToEl.value || "").trim();
+    if (cf && ct) {
+      if (cf.length !== ct.length) {
+        throw new Error("Custom pair: from và to phải cùng độ dài (" + cf.length + " vs " + ct.length + ")");
+      }
+      list.push({ from: cf, to: ct });
+    }
+    return list;
+  }
 
   function applyPatch(buffer, mode) {
     const view = new Uint8Array(buffer.slice(0));
-    const list = PATCHES[mode];
-    if (!list) throw new Error("Chế độ patch không hợp lệ");
-
+    const list = getPatchList(mode);
     let totalReplaced = 0;
     const detail = {};
-
     for (const patch of list) {
       const fromBytes = encode(patch.from);
       const toBytes = encode(patch.to);
       if (fromBytes.length !== toBytes.length) continue;
-
       const positions = findAll(view, fromBytes);
       for (const pos of positions) {
         view.set(toBytes, pos);
         totalReplaced++;
       }
-      if (positions.length) {
-        detail[patch.from + " → " + patch.to] = positions.length;
-      }
+      if (positions.length) detail[patch.from + " → " + patch.to] = positions.length;
     }
-
-    return { buffer: view.buffer, count: totalReplaced, detail: detail };
+    return { buffer: view.buffer, count: totalReplaced, detail };
   }
 
   function verifyPatch(buffer, mode) {
     const view = new Uint8Array(buffer);
-    const list = PATCHES[mode];
+    const list = getPatchList(mode);
     const remaining = {};
     const present = {};
-
     for (const patch of list) {
       const fromCount = findAll(view, encode(patch.from)).length;
       const toCount = findAll(view, encode(patch.to)).length;
@@ -346,15 +299,14 @@
 
   function buildOutputFileName(originalName, mode) {
     const dotIndex = originalName.lastIndexOf(".");
-    if (dotIndex === -1) return `${originalName}_${mode}`;
-    const baseName = originalName.substring(0, dotIndex);
+    if (dotIndex === -1) return originalName + "_" + mode;
+    const baseName = originalName.substring(0, dotIndex).replace(/_(head|neck|drag|body|lock|dry)$/i, "");
     const ext = originalName.substring(dotIndex);
-    const cleanBase = baseName.replace(/_(head|neck|drag|body|lock)$/i, "");
-    return `${cleanBase}_${mode}${ext}`;
+    return baseName + "_" + mode + (state.dryRun ? "_dry" : "") + ext;
   }
 
   function triggerDownload(blobOrBuffer, fileName) {
-    const blob = (blobOrBuffer instanceof Blob) ? blobOrBuffer : new Blob([blobOrBuffer], { type: "application/octet-stream" });
+    const blob = blobOrBuffer instanceof Blob ? blobOrBuffer : new Blob([blobOrBuffer], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -365,134 +317,147 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }
+    catch (_) { return []; }
+  }
+
+  function saveHistoryEntry(entry) {
+    const list = loadHistory().filter(x => x.name !== entry.name);
+    list.unshift(entry);
+    while (list.length > MAX_HISTORY) list.pop();
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (_) {}
+    renderHistory();
+  }
+
+  function renderHistory() {
+    if (!historyEl) return;
+    const list = loadHistory();
+    if (!list.length) { historyEl.innerHTML = ""; historyEl.classList.remove("show"); return; }
+    historyEl.innerHTML = '<div class="bone-title">Lịch sử (metadata)</div>' +
+      list.map(h => '<div class="hist-row"><span>' + h.name + '</span><span class="muted">' +
+        (h.mode || "") + " · " + (h.hits || 0) + " hits · " + (h.at || "") + "</span></div>").join("");
+    historyEl.classList.add("show");
+  }
+
   function renderBoneReport(found) {
     if (!boneReportEl) return;
     if (!found.length) {
-      boneReportEl.innerHTML = '<div class="warn">Không tìm thấy bone tiêu chuẩn. File có thể mã hóa / sai cấu trúc / version mới.</div>';
+      boneReportEl.innerHTML = '<div class="warn">Không tìm thấy bone tiêu chuẩn. File có thể mã hóa / UnityFS / version mới.</div>';
       boneReportEl.classList.add("show");
       return;
     }
-    const rows = found.map(f =>
-      `<div class="bone-row"><span class="bone-name">${f.name}</span><span class="bone-count">×${f.count}</span></div>`
-    ).join("");
-    boneReportEl.innerHTML = `<div class="bone-title">Bone scan</div>${rows}`;
+    boneReportEl.innerHTML = '<div class="bone-title">Bone scan</div>' +
+      found.map(f => '<div class="bone-row"><span class="bone-name">' + f.name +
+        '</span><span class="bone-count">×' + f.count + "</span></div>").join("");
     boneReportEl.classList.add("show");
   }
 
   function renderFilePicker(entries, selectedName) {
     if (!filePickerEl) return;
-    if (!entries || entries.length <= 1) {
-      filePickerEl.innerHTML = "";
-      filePickerEl.classList.remove("show");
-      return;
+    if (!entries || !entries.length) {
+      filePickerEl.innerHTML = ""; filePickerEl.classList.remove("show"); return;
     }
-    const options = entries.map(e => {
+    state.selectedNames = new Set([selectedName]);
+    const rows = entries.map(e => {
       const sizeKb = e.rawData ? (e.rawData.byteLength / 1024).toFixed(1) : "?";
       const found = scanBones(e.rawData);
       const score = boneScore(found);
-      const selected = e.name === selectedName ? "selected" : "";
-      return `<option value="${e.name}" ${selected}>${e.name} (${sizeKb} KB · score ${score})</option>`;
+      const checked = e.name === selectedName ? "checked" : "";
+      return '<label class="file-check"><input type="checkbox" data-name="' +
+        e.name.replace(/"/g, "&quot;") + '" ' + checked + ' /><span class="fc-name">' +
+        e.name + '</span><span class="fc-meta">' + sizeKb + " KB · score " + score + "</span></label>";
     }).join("");
-    filePickerEl.innerHTML = `
-      <label class="picker-label">Chọn file trong ZIP (nên chọn file score cao nhất có bone):</label>
-      <select id="targetSelect">${options}</select>
-    `;
+    filePickerEl.innerHTML = '<div class="picker-label">Chọn 1 hoặc nhiều file trong ZIP để patch</div>' + rows;
     filePickerEl.classList.add("show");
-
-    const sel = document.getElementById("targetSelect");
-    if (sel) {
-      sel.addEventListener("change", () => {
-        const name = sel.value;
-        const entry = state.validEntries.find(e => e.name === name);
-        if (!entry || !entry.rawData) return;
-        state.targetFileName = entry.name;
-        state.targetFileBuffer = entry.rawData;
-        const found = scanBones(entry.rawData);
-        state.lastScan = found;
-        renderBoneReport(found);
-        if (hasAimBones(found)) {
-          setStatus("Đã chọn file · bone OK · sẵn sàng patch", "ok");
-          modesEl.classList.add("show");
-        } else {
-          setStatus("File này không có bone aim tiêu chuẩn. Chọn file khác hoặc vẫn thử.", "err");
-          modesEl.classList.add("show");
-        }
-        if (verifyEl) {
-          verifyEl.innerHTML = "";
-          verifyEl.classList.remove("show");
+    filePickerEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener("change", () => {
+        const name = cb.getAttribute("data-name");
+        if (cb.checked) state.selectedNames.add(name);
+        else state.selectedNames.delete(name);
+        if (state.selectedNames.size === 1) {
+          const only = [...state.selectedNames][0];
+          const entry = state.validEntries.find(e => e.name === only);
+          if (entry && entry.rawData) {
+            state.targetFileName = entry.name;
+            state.targetFileBuffer = entry.rawData;
+            const found = scanBones(entry.rawData);
+            state.lastScan = found;
+            renderBoneReport(found);
+          }
         }
       });
-    }
+    });
   }
 
-  function renderVerify(result, mode) {
+  function renderVerify(result, mode, isDry) {
     if (!verifyEl) return;
     const v = verifyPatch(result.buffer, mode);
     const remainingKeys = Object.keys(v.remaining);
     const presentKeys = Object.keys(v.present);
-
-    let html = `<div class="verify-title">Verify sau patch</div>`;
-    html += `<div class="verify-line">Đã thay: <strong>${result.count}</strong> vị trí</div>`;
-
+    let html = '<div class="verify-title">Verify ' + (isDry ? "(dry-run)" : "sau patch") + "</div>";
+    html += '<div class="verify-line">Đã khớp/thay: <strong>' + result.count + "</strong> vị trí</div>";
     if (Object.keys(result.detail).length) {
-      html += `<div class="verify-detail">`;
-      for (const [k, c] of Object.entries(result.detail)) {
-        html += `<div>${k} ×${c}</div>`;
-      }
-      html += `</div>`;
+      html += '<div class="verify-detail">';
+      for (const [k, c] of Object.entries(result.detail)) html += "<div>" + k + " ×" + c + "</div>";
+      html += "</div>";
     }
-
     if (remainingKeys.length) {
-      html += `<div class="verify-warn">Còn chuỗi cũ: ${remainingKeys.map(k => k + "×" + v.remaining[k]).join(", ")}</div>`;
+      html += '<div class="verify-warn">Còn chuỗi cũ: ' +
+        remainingKeys.map(k => k + "×" + v.remaining[k]).join(", ") + "</div>";
     } else {
-      html += `<div class="verify-ok">Không còn chuỗi nguồn cũ trong file target</div>`;
+      html += '<div class="verify-ok">Không còn chuỗi nguồn cũ trong buffer đã xử lý</div>';
     }
-
     if (presentKeys.length) {
-      html += `<div class="verify-ok">Chuỗi đích hiện có: ${presentKeys.map(k => k + "×" + v.present[k]).join(", ")}</div>`;
+      html += '<div class="verify-ok">Chuỗi đích: ' +
+        presentKeys.map(k => k + "×" + v.present[k]).join(", ") + "</div>";
     }
-
+    if (isDry) html += '<div class="verify-warn">Dry-run: chưa tải file. Tắt dry-run rồi bấm mode để xuất.</div>';
     verifyEl.innerHTML = html;
     verifyEl.classList.add("show");
+  }
+
+  function checklistReady() {
+    if (!checklistEl) return true;
+    const boxes = checklistEl.querySelectorAll('input[type="checkbox"]');
+    if (!boxes.length) return true;
+    for (const b of boxes) if (!b.checked) return false;
+    return true;
   }
 
   async function handleFile(file) {
     try {
       setStatus("Đang phân tích tệp…");
-      if (boneReportEl) { boneReportEl.innerHTML = ""; boneReportEl.classList.remove("show"); }
-      if (filePickerEl) { filePickerEl.innerHTML = ""; filePickerEl.classList.remove("show"); }
-      if (verifyEl) { verifyEl.innerHTML = ""; verifyEl.classList.remove("show"); }
+      [boneReportEl, filePickerEl, verifyEl].forEach(el => {
+        if (el) { el.innerHTML = ""; el.classList.remove("show"); }
+      });
       modesEl.classList.remove("show");
+      if (checklistEl) checklistEl.classList.add("show");
 
       const buffer = await readFile(file);
       state.originalFullName = file.name;
       state.rawBuffer = buffer;
-
       const u8 = new Uint8Array(buffer);
       const looksZip = u8[0] === 0x50 && u8[1] === 0x4b;
       const unity = isUnityFS(u8);
 
+      if (unity) {
+        setStatus("Cảnh báo: UnityFS — patch string có thể không hiệu lực nếu data nén/mã hóa trong bundle.", "err");
+      }
+
       if (looksZip && !unity) {
-        setStatus("Phát hiện ZIP, đang quét file con…");
+        setStatus("Phát hiện ZIP, đang quét…");
         const entries = await parseZip(buffer);
         const validEntries = entries.filter(e => !e.isDir && e.rawData);
+        if (!validEntries.length) throw new Error("Không giải nén được file trong ZIP (mã hóa/hỏng)");
 
-        if (!validEntries.length) {
-          throw new Error("Không giải nén được file bên trong hoặc ZIP bị mã hóa/hỏng");
-        }
-
-        let best = null;
-        let bestScore = -1;
+        let best = null, bestScore = -1;
         for (const entry of validEntries) {
           const found = scanBones(entry.rawData);
           const score = boneScore(found);
-          if (score > bestScore) {
-            bestScore = score;
-            best = { entry: entry, found: found };
-          }
+          if (score > bestScore) { bestScore = score; best = { entry, found }; }
         }
-
-        if (!best || bestScore <= 0) {
+        if (!best) {
           validEntries.sort((a, b) => b.uncompSize - a.uncompSize);
           best = { entry: validEntries[0], found: scanBones(validEntries[0].rawData) };
         }
@@ -503,35 +468,28 @@
         state.targetFileName = best.entry.name;
         state.targetFileBuffer = best.entry.rawData;
         state.lastScan = best.found;
+        state.selectedNames = new Set([best.entry.name]);
 
-        fileNameEl.textContent = `${file.name} ➔ [Target: ${best.entry.name}] (${(best.entry.rawData.byteLength / 1024).toFixed(1)} KB)`;
-
+        fileNameEl.textContent = file.name + " ➔ [" + best.entry.name + "] (" +
+          (best.entry.rawData.byteLength / 1024).toFixed(1) + " KB)";
         renderFilePicker(validEntries, best.entry.name);
         renderBoneReport(best.found);
-
-        if (hasAimBones(best.found)) {
-          setStatus("Khớp bone aim · chọn mode bên dưới (hoặc đổi file trong ZIP)", "ok");
-          modesEl.classList.add("show");
-        } else {
-          setStatus("Cảnh báo: không thấy bone aim tiêu chuẩn. Có thể version mới / mã hóa. Vẫn có thể thử.", "err");
-          modesEl.classList.add("show");
-        }
+        setStatus(hasAimBones(best.found)
+          ? "Bone OK · chọn file (có thể nhiều) · chọn mode hoặc dry-run"
+          : "Cảnh báo: không thấy bone aim tiêu chuẩn.", hasAimBones(best.found) ? "ok" : "err");
+        modesEl.classList.add("show");
       } else {
         state.isZip = false;
         state.validEntries = [];
+        state.selectedNames = new Set([file.name]);
         state.targetFileName = file.name;
         state.targetFileBuffer = buffer;
-        fileNameEl.textContent = `${file.name} (${(buffer.byteLength / 1024).toFixed(1)} KB)${unity ? " · UnityFS" : ""}`;
-
+        fileNameEl.textContent = file.name + " (" + (buffer.byteLength / 1024).toFixed(1) + " KB)" +
+          (unity ? " · UnityFS" : "");
         const found = scanBones(buffer);
         state.lastScan = found;
         renderBoneReport(found);
-
-        if (hasAimBones(found)) {
-          setStatus("Khớp bone aim · sẵn sàng patch", "ok");
-        } else {
-          setStatus("Cảnh báo: Không tìm thấy Bone tiêu chuẩn. File có thể bị mã hóa / sai cấu trúc.", "err");
-        }
+        setStatus(hasAimBones(found) ? "Bone OK · sẵn sàng" : "Cảnh báo: không thấy bone tiêu chuẩn.", hasAimBones(found) ? "ok" : "err");
         modesEl.classList.add("show");
       }
     } catch (e) {
@@ -540,62 +498,101 @@
     }
   }
 
-  // --- EVENTS ---
+  async function runMode(mode) {
+    if (!state.targetFileBuffer && !state.isZip) return;
+    state.dryRun = !!(dryRunEl && dryRunEl.checked);
+
+    if (!state.dryRun && !checklistReady()) {
+      setStatus("Tick đủ checklist trước khi xuất file.", "err");
+      return;
+    }
+
+    try {
+      setStatus(state.dryRun ? "Dry-run…" : "Đang patch…");
+
+      if (state.isZip) {
+        const names = state.selectedNames.size ? [...state.selectedNames] : [state.targetFileName];
+        let totalHits = 0;
+        const allDetail = {};
+        const patchedMap = {};
+
+        for (const name of names) {
+          const entry = state.validEntries.find(e => e.name === name);
+          if (!entry || !entry.rawData) continue;
+          const result = applyPatch(entry.rawData, mode);
+          totalHits += result.count;
+          for (const [k, v] of Object.entries(result.detail)) allDetail[name + ": " + k] = v;
+          patchedMap[name] = result.buffer;
+          if (names.length === 1) renderVerify(result, mode, state.dryRun);
+        }
+
+        if (totalHits === 0) {
+          setStatus('Không có chuỗi nào được thay cho mode "' + mode + '".', "err");
+          if (names.length !== 1) renderVerify({ buffer: state.targetFileBuffer, count: 0, detail: {} }, mode, state.dryRun);
+          return;
+        }
+
+        if (names.length > 1) {
+          renderVerify({ buffer: state.targetFileBuffer, count: totalHits, detail: allDetail }, mode, state.dryRun);
+        }
+
+        if (state.dryRun) {
+          setStatus("Dry-run: " + totalHits + " hits trên " + names.length + " file · chưa tải.", "ok");
+          return;
+        }
+
+        const packList = [];
+        for (const entry of state.zipEntries) {
+          if (entry.isDir) continue;
+          if (patchedMap[entry.name]) packList.push({ name: entry.name, buffer: patchedMap[entry.name] });
+          else if (entry.rawData) packList.push({ name: entry.name, buffer: entry.rawData });
+        }
+        const outName = buildOutputFileName(state.originalFullName, mode);
+        triggerDownload(createZip(packList), outName);
+        saveHistoryEntry({
+          name: state.originalFullName, mode: mode, hits: totalHits,
+          at: new Date().toISOString().slice(0, 16).replace("T", " ")
+        });
+        setStatus("Đã patch " + totalHits + " vị trí · " + names.length + " file ➔ " + outName, "ok");
+      } else {
+        const result = applyPatch(state.targetFileBuffer, mode);
+        renderVerify(result, mode, state.dryRun);
+        if (result.count === 0) {
+          setStatus('Không có chuỗi nào được thay cho mode "' + mode + '".', "err");
+          return;
+        }
+        if (state.dryRun) {
+          setStatus("Dry-run: " + result.count + " hits · chưa tải.", "ok");
+          return;
+        }
+        const outName = buildOutputFileName(state.originalFullName, mode);
+        triggerDownload(result.buffer, outName);
+        saveHistoryEntry({
+          name: state.originalFullName, mode: mode, hits: result.count,
+          at: new Date().toISOString().slice(0, 16).replace("T", " ")
+        });
+        setStatus("Đã patch " + result.count + " vị trí ➔ " + outName, "ok");
+      }
+    } catch (err) {
+      setStatus(err.message || "Lỗi patch", "err");
+    }
+  }
 
   dropZone.addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", (e) => {
-    if (e.target.files[0]) handleFile(e.target.files[0]);
-  });
-
-  dropZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropZone.classList.add("dragover");
-  });
+  fileInput.addEventListener("change", e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
   dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
-  dropZone.addEventListener("drop", (e) => {
+  dropZone.addEventListener("drop", e => {
     e.preventDefault();
     dropZone.classList.remove("dragover");
     if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
   });
 
-  modesEl.addEventListener("click", async (e) => {
+  modesEl.addEventListener("click", e => {
     const btn = e.target.closest(".mode-btn");
-    if (!btn || !state.targetFileBuffer) return;
-    const mode = btn.dataset.mode;
-
-    try {
-      setStatus("Đang áp dụng bản vá…");
-      const result = applyPatch(state.targetFileBuffer, mode);
-
-      if (result.count === 0) {
-        setStatus(`Không có chuỗi bone nào được thay thế cho chế độ "${mode}". Có thể file đã patch hoặc tên bone khác version.`, "err");
-        renderVerify(result, mode);
-        return;
-      }
-
-      const outName = buildOutputFileName(state.originalFullName, mode);
-
-      if (state.isZip) {
-        setStatus("Đang đóng gói lại ZIP…");
-        const packList = [];
-        for (const entry of state.zipEntries) {
-          if (entry.isDir) continue;
-          if (entry.name === state.targetFileName) {
-            packList.push({ name: entry.name, buffer: result.buffer });
-          } else if (entry.rawData) {
-            packList.push({ name: entry.name, buffer: entry.rawData });
-          }
-        }
-        const zipBlob = createZip(packList);
-        triggerDownload(zipBlob, outName);
-      } else {
-        triggerDownload(result.buffer, outName);
-      }
-
-      renderVerify(result, mode);
-      setStatus(`Đã patch ${result.count} vị trí ➔ Tải về: ${outName}`, "ok");
-    } catch (err) {
-      setStatus(err.message || "Lỗi trong quá trình patch và xuất file", "err");
-    }
+    if (!btn) return;
+    runMode(btn.dataset.mode);
   });
+
+  renderHistory();
 })();
