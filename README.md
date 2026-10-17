@@ -1,13 +1,14 @@
 # FF Cache Aim Patcher
 
-Client-side Free Fire / Free Fire Max cache editor.
-
 **https://thaibao-byte.github.io/ff-cache-aim-patcher/**
 
-## v1.2.1
+## v1.3
 
-- All v1.2.0 features
-- **Xuất ProxyPin config (JSON)** — template import vào app ProxyPin (App Store)
-- Guide: ProxyPin ≠ cache bone file; aim proxy phụ thuộc script/config
+- Cache bone patch (head/neck/drag/body) + dry-run + verify
+- **ProxyPin kit** linked to tool:
+  - Export ProxyPin package JSON (import Script → Nhập)
+  - Export setup checklist TXT (steps like iOS ProxyPin tutorials)
+  - Full in-app guide modal (cert → trust CA → import → Play → Free Fire)
+- Does **not** ship third-party commercial aim/key payloads (e.g. Delta)
 
-Web only rewrites bone strings / exports templates. It does **not** write into iPhone app containers.
+Client-side only.
